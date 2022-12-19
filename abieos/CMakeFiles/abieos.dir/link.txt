@@ -1,0 +1,2 @@
+/usr/bin/ar qc libabieos.a CMakeFiles/abieos.dir/src/abi.cpp.o CMakeFiles/abieos.dir/src/crypto.cpp.o CMakeFiles/abieos.dir/include/eosio/fpconv.c.o
+/usr/bin/ranlib libabieos.a
