@@ -1,4 +1,0 @@
-/mnt/c/GitHub/rs-abieos/abieos/CMakeFiles/abieos.dir
-/mnt/c/GitHub/rs-abieos/abieos/CMakeFiles/rustabieos.dir
-/mnt/c/GitHub/rs-abieos/abieos/CMakeFiles/edit_cache.dir
-/mnt/c/GitHub/rs-abieos/abieos/CMakeFiles/rebuild_cache.dir

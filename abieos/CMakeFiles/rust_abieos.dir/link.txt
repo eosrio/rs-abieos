@@ -1,1 +1,0 @@
-/usr/bin/c++ -fPIC -shared -Wl,-soname,librust_abieos.so -o librust_abieos.so CMakeFiles/rust_abieos.dir/src/abieos.cpp.o  libabieos.a 
