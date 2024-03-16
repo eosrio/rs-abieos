@@ -1,13 +1,49 @@
-use std::path::PathBuf;
+use bindgen;
+use cc;
 
 fn main() {
-    // This is the directory where the `c` library is located.
-    let libdir_path = PathBuf::from("abieos").canonicalize().expect("cannot canonicalize path");
 
-    // Tell cargo to look for shared libraries in the specified directory
-    println!("cargo:rustc-link-search={}", libdir_path.to_str().unwrap());
+    // // Build native bindings :: "bindgen lib/abieos/src/abieos.h -o src/bindings.rs"
+    bindgen::builder()
+        .header("lib/abieos/src/abieos.h")
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+        .generate()
+        .expect("Unable to generate bindings")
+        .write_to_file("src/bindings.rs")
+        .expect("Couldn't write bindings!");
 
-    // Tell cargo to tell rustc to link our `abieos` library. Cargo will
-    // automatically know it must look for a `libabieos.a` file.
-    println!("cargo:rustc-link-lib=rustabieos");
+    // Build the native library with rust
+    cc::Build::new()
+        .cpp(true)
+        .includes(&[
+            "lib/abieos/external/rapidjson/include",
+            "lib/abieos/include"
+        ])
+        .files(&[
+            "lib/abieos/src/abieos.cpp",
+            "lib/abieos/src/abi.cpp",
+            "lib/abieos/src/crypto.cpp",
+            "lib/abieos/include/eosio/fpconv.c",
+        ])
+        .flag("-Wall")
+        .flag("-Wextra")
+        .flag("-Wno-unused-parameter")
+        .flag("-std=c++17")
+        .static_flag(true)
+        .cpp_link_stdlib("stdc++")
+        .out_dir("target/lib/abieos")
+        .compile("abieos");
+
+    // Add search path for the shared library
+    println!("cargo:rustc-link-search={}/build", "target/lib");
+
+    // Link the shared abieos library
+    println!("cargo:rustc-link-lib=static=abieos");
+
+    // Link the system C++ shared library.
+    if sys_info::os_type().unwrap() == "Linux" {
+        println!("cargo:rustc-link-lib=stdc++");
+    } else {
+        println!("cargo:rustc-link-lib=c++");
+    }
 }

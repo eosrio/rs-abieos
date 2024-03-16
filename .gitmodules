@@ -1,0 +1,3 @@
+[submodule "lib/abieos"]
+	path = lib/abieos
+	url = https://github.com/AntelopeIO/abieos.git
