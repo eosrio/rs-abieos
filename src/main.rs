@@ -15,8 +15,7 @@ fn main() {
     println!("\n⚡ Testing conversion from abi json to binary...");
     let abi_bin: Vec<u8> = abieos.abi_json_to_bin(abi_content.clone()).unwrap();
     if abi_bin.len() > 0 {
-        println!("☑️ ABI_BIN: {:?}", abi_bin[0..10].to_vec());
-        println!("☑️ ABI SIZE: {}", abi_bin.len());
+        println!("☑️ ABI Converted: (size: {} bytes)", abi_bin.len());
     } else {
         println!("❌ Failed to convert ABI to binary");
     }
@@ -128,10 +127,13 @@ fn main() {
     };
 
 
+    println!("\n⚡ Testing json to hex conversion with unordered json...");
     let json_sample = read_to_string("abis/sample.json")
         .expect("Failed to read JSON file");
+    println!("J1: {}", json_sample);
     let json_sample_unordered = read_to_string("abis/sample_unordered.json")
         .expect("Failed to read JSON file");
+    println!("J2: {}", json_sample_unordered);
 
     let result = abieos.json_to_hex(
         "eosio",
@@ -152,10 +154,17 @@ fn main() {
         String::new()
     });
     println!("{}", result2);
+    
+    if result == result2 {
+        println!("☑️ The result is the same for ordered and unordered JSONs");
+    } else {
+        println!("❌ The result is different for ordered and unordered JSONs");
+    }
 
     assert_eq!(result,result2, "The result should be the same for ordered and unordered jsons");
 
     // deserialize
+    println!("\n⚡ Deserializing...");
     let ds_result = abieos.hex_to_json(
         "eosio",
         "delegatebw",

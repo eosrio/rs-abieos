@@ -1,7 +1,7 @@
 {
+  "stake_net_quantity": "1000.0000 EOS",
   "from": "alice",
   "receiver": "bob",
-  "stake_net_quantity": "1000.0000 EOS",
-  "stake_cpu_quantity": "1000.0000 EOS",
-  "transfer": false
+  "transfer": false,
+  "stake_cpu_quantity": "1000.0000 EOS"
 }

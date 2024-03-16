@@ -137,7 +137,7 @@ impl Abieos {
         let datatype = CString::new(datatype).unwrap();
         let json = CString::new(json).unwrap();
         unsafe {
-            match abieos_json_to_bin(ctx, account, datatype.as_ptr(), json.as_ptr()) {
+            match abieos_json_to_bin_reorderable(ctx, account, datatype.as_ptr(), json.as_ptr()) {
                 1 => {
                     let p = abieos_get_bin_hex(ctx);
                     Ok(string_from_ptr(p))
@@ -252,9 +252,7 @@ pub mod abieos {
 
     pub fn create() -> *mut abieos_context {
         unsafe {
-            let context = abieos_create();
-            println!("{:?}", context);
-            context
+            abieos_create()
         }
     }
 }
