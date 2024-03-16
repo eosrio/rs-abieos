@@ -10,11 +10,6 @@ use crate::abieos_error::AbieosError;
 
 include!("bindings.rs");
 
-fn convert_str(my_str: &str) -> *const c_char {
-    let c_string = CString::new(my_str).expect("Failed to create CString");
-    c_string.as_ptr()
-}
-
 fn string_from_ptr(ptr: *const c_char) -> String {
     unsafe {
         CStr::from_ptr(ptr).to_str().expect("Failed to convert CStr to str").to_string()

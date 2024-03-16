@@ -1,7 +1,17 @@
+use std::process::Command;
 use bindgen;
 use cc;
 
 fn main() {
+
+    // call "git submodule update --init --recursive"
+    let git_update_result = Command::new("git")
+        .args(&["submodule", "update", "--init", "--recursive", "-f"])
+        .output()
+        .expect("Failed to execute git");
+
+    println!("git submodule update --init --recursive: {}", String::from_utf8_lossy(&git_update_result.stderr));
+
 
     // // Build native bindings :: "bindgen lib/abieos/src/abieos.h -o src/bindings.rs"
     bindgen::builder()
