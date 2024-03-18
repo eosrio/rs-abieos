@@ -3,7 +3,7 @@ use bindgen;
 use cc;
 
 fn main() {
-
+    
     // call "git submodule update --init --recursive"
     let git_update_result = Command::new("git")
         .args(&["submodule", "update", "--init", "--recursive", "-f"])
@@ -24,6 +24,21 @@ fn main() {
 
     // Build the native library with rust
     cc::Build::new()
+        .includes(&[
+            "lib/abieos/include"
+        ])
+        .files(&[
+            "lib/abieos/include/eosio/fpconv.c",
+        ])
+        .flag("-Wall")
+        .flag("-Wextra")
+        .flag("-Wno-unused-parameter")
+        .static_flag(true)
+        .out_dir("target/lib/fpconv")
+        .compile("fpconv");
+
+    // Build the native library with rust
+    cc::Build::new()
         .cpp(true)
         .includes(&[
             "lib/abieos/external/rapidjson/include",
@@ -32,8 +47,7 @@ fn main() {
         .files(&[
             "lib/abieos/src/abieos.cpp",
             "lib/abieos/src/abi.cpp",
-            "lib/abieos/src/crypto.cpp",
-            "lib/abieos/include/eosio/fpconv.c",
+            "lib/abieos/src/crypto.cpp"
         ])
         .flag("-Wall")
         .flag("-Wextra")

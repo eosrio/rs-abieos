@@ -15,6 +15,9 @@ pub enum AbieosError {
     GetTypeForActionResultError(String),
     AbiBinToJsonError(String),
     AbiJsonToBinError(String),
+    AbiNotLoadedError,
+    FileReadError,
+    BinToJsonError(String),
 }
 
 impl Display for AbieosError {
@@ -31,6 +34,9 @@ impl Display for AbieosError {
             AbieosError::GetTypeForActionResultError(e) => write!(f, "Failed to get type for action result: {}", e),
             AbieosError::AbiBinToJsonError(e) => write!(f, "Failed to convert ABI binary to JSON: {}", e),
             AbieosError::AbiJsonToBinError(e) => write!(f, "Failed to convert ABI JSON to binary: {}", e),
+            AbieosError::AbiNotLoadedError => write!(f, "ABI not loaded in this contract"),
+            AbieosError::FileReadError => write!(f, "Failed to read file"),
+            AbieosError::BinToJsonError(e) => write!(f, "Failed to convert binary to JSON: {}", e),
             AbieosError::UnknownError => write!(f, "Unknown error occurred"),
         }
     }

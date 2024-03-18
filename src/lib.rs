@@ -21,6 +21,114 @@ pub struct Abieos {
     pub context: Option<*mut abieos_context>,
 }
 
+unsafe impl Send for Abieos {}
+
+pub enum NameLike {
+    String(String),
+    StringRef(&'static str),
+    U64(u64),
+    I32(i32),
+}
+
+pub enum AbiLike {
+    Json(String),
+    Hex(String),
+    Bin(Vec<u8>),
+}
+
+pub struct AbieosContract {
+    pub context: *mut abieos_context,
+    pub name: u64,
+    pub abiLoaded: bool,
+}
+
+impl AbieosContract {
+    pub fn load_json_file(&mut self, path: &str) -> Result<&mut Self, AbieosError> {
+        let ref_abieos = Abieos::from_context(self.context);
+        match std::fs::read_to_string(path) {
+            Ok(file) => {
+                match ref_abieos.set_abi_json_native(self.name, file) {
+                    Ok(_) => {
+                        self.abiLoaded = true;
+                        Ok(self)
+                    }
+                    Err(e) => Err(e)
+                }
+            }
+            Err(_) => Err(AbieosError::FileReadError),
+        }
+    }
+
+    pub fn load_abi(&mut self, abi: AbiLike) -> Result<&mut Self, AbieosError> {
+        let ref_abieos = Abieos::from_context(self.context);
+        let result = match abi {
+            AbiLike::Json(abi_json) => {
+                ref_abieos.set_abi_json_native(self.name, abi_json)
+            }
+            AbiLike::Hex(abi_hex) => {
+                ref_abieos.set_abi_hex_native(self.name, abi_hex)
+            }
+            AbiLike::Bin(abi_bin) => {
+                ref_abieos.set_abi_bin_native(self.name, abi_bin)
+            }
+        };
+        match result {
+            Ok(_) => {
+                self.abiLoaded = true;
+                Ok(self)
+            }
+            Err(e) => Err(e)
+        }
+    }
+
+    pub fn get_type_for_action(&self, action: &str) -> Result<String, AbieosError> {
+        let ref_abieos = Abieos::from_context(self.context);
+        match ref_abieos.string_to_name(action) {
+            Ok(x) => ref_abieos.get_type_for_action_native(self.name, x),
+            Err(_) => Err(AbieosError::StringToNameError)
+        }
+    }
+
+    pub fn json_to_hex(&self, datatype: &str, json: String) -> Result<String, AbieosError> {
+        let ref_abieos = Abieos::from_context(self.context);
+        ref_abieos.json_to_hex_native(self.name, datatype, json)
+    }
+
+    pub fn hex_to_json(&self, datatype: &str, p1: String) -> Result<String, AbieosError> {
+        let ref_abieos = Abieos::from_context(self.context);
+        ref_abieos.hex_to_json_native(self.name, datatype, p1)
+    }
+}
+
+impl AbieosContract {
+    pub fn new(context: *mut abieos_context, name: u64) -> AbieosContract {
+        AbieosContract { context, name, abiLoaded: false }
+    }
+}
+
+impl Abieos {
+    pub fn contract(&self, account_name: NameLike) -> AbieosContract {
+        match account_name {
+            NameLike::StringRef(name) => {
+                let name_u64 = self.string_to_name(name)
+                    .expect("Failed to convert name to u64");
+                AbieosContract::new(self.ctx(), name_u64)
+            }
+            NameLike::String(name) => {
+                let name_u64 = self.string_to_name(name.as_str())
+                    .expect("Failed to convert name to u64");
+                AbieosContract::new(self.ctx(), name_u64)
+            }
+            NameLike::U64(name) => {
+                AbieosContract::new(self.ctx(), name)
+            }
+            NameLike::I32(name) => {
+                AbieosContract::new(self.ctx(), name as u64)
+            }
+        }
+    }
+}
+
 impl Default for Abieos {
     fn default() -> Self {
         Abieos::new()
@@ -40,6 +148,12 @@ impl Abieos {
         }
     }
 
+    pub fn destroy(&self) {
+        unsafe {
+            abieos_destroy(self.context.unwrap());
+        }
+    }
+
     fn get_error(&self) -> String {
         let ctx = self.ctx();
         unsafe {
@@ -55,17 +169,12 @@ impl Abieos {
     /// Convert a string slice into an u64 native name
     pub fn string_to_name(&self, name: &str) -> Result<u64, AbieosError> {
         let ctx = self.ctx();
-        if name.len() > 12 {
+        if name.len() > 13 {
             return Err(AbieosError::NameTooLongError);
         }
         unsafe {
             let c_buf = CString::new(name.as_bytes()).unwrap();
-            let name = abieos_string_to_name(ctx, c_buf.as_ptr());
-            if name == 0 {
-                Err(AbieosError::StringToNameError)
-            } else {
-                Ok(name)
-            }
+            Ok(abieos_string_to_name(ctx, c_buf.as_ptr()))
         }
     }
 
@@ -82,16 +191,27 @@ impl Abieos {
     }
 
     /// Load a contract ABI to memory (JSON format)
-    pub fn set_abi(&self, contract: &str, abi_json: &str) -> Result<bool, AbieosError> {
+    pub fn set_abi_json(&self, contract: &str, abi_json: String) -> Result<bool, AbieosError> {
         match self.string_to_name(contract) {
             Ok(contract_u64) => unsafe {
-                let abi_content_cs = CString::new(abi_json.as_bytes()).unwrap();
+                let abi_content_cs = CString::new(abi_json).unwrap();
                 match abieos_set_abi(self.ctx(), contract_u64, abi_content_cs.as_ptr()) {
                     1 => Ok(true),
                     _ => Err(AbieosError::SetAbiError(self.get_error()))
                 }
             }
             Err(_) => Err(AbieosError::StringToNameError)
+        }
+    }
+
+    /// Load a contract ABI to memory (JSON format)
+    pub fn set_abi_json_native(&self, contract_u64: u64, abi_json: String) -> Result<bool, AbieosError> {
+        let abi_content_cs = CString::new(abi_json).unwrap();
+        unsafe {
+            match abieos_set_abi(self.ctx(), contract_u64, abi_content_cs.as_ptr()) {
+                1 => Ok(true),
+                _ => Err(AbieosError::SetAbiError(self.get_error()))
+            }
         }
     }
 
@@ -108,7 +228,17 @@ impl Abieos {
             Err(_) => Err(AbieosError::StringToNameError)
         }
     }
-    
+
+    pub fn set_abi_hex_native(&self, contract: u64, abi_hex: String) -> Result<bool, AbieosError> {
+        let abi_hex_cs = CString::new(abi_hex).unwrap();
+        unsafe {
+            match abieos_set_abi_hex(self.ctx(), contract, abi_hex_cs.as_ptr()) {
+                1 => Ok(true),
+                _ => Err(AbieosError::SetAbiError(self.get_error()))
+            }
+        }
+    }
+
     /// Load a contract ABI to memory (binary format)
     pub fn set_abi_bin(&self, contract: &str, abi_bin: Vec<u8>) -> Result<bool, AbieosError> {
         match self.string_to_name(contract) {
@@ -124,7 +254,18 @@ impl Abieos {
         }
     }
 
-    /// Serialize JSON into binary
+    pub fn set_abi_bin_native(&self, contract: u64, abi_bin: Vec<u8>) -> Result<bool, AbieosError> {
+        let abi_bin_data: *const c_char = abi_bin.as_ptr() as *const c_char;
+        let abi_bin_size: usize = abi_bin.len();
+        unsafe {
+            match abieos_set_abi_bin(self.ctx(), contract, abi_bin_data, abi_bin_size) {
+                1 => Ok(true),
+                _ => Err(AbieosError::SetAbiError(self.get_error()))
+            }
+        }
+    }
+
+    /// Serialize JSON into binary (output as HEX)
     pub fn json_to_hex(&self, account: &str, datatype: &str, json: String) -> Result<String, AbieosError> {
         let ctx = self.ctx();
         let account = self.string_to_name(account)?;
@@ -142,11 +283,77 @@ impl Abieos {
         }
     }
 
+    pub fn json_to_hex_native(&self, account: u64, datatype: &str, json: String) -> Result<String, AbieosError> {
+        let ctx = self.ctx();
+        let datatype = CString::new(datatype).unwrap();
+        let json = CString::new(json).unwrap();
+        unsafe {
+            match abieos_json_to_bin_reorderable(ctx, account, datatype.as_ptr(), json.as_ptr()) {
+                1 => {
+                    let p = abieos_get_bin_hex(ctx);
+                    Ok(string_from_ptr(p))
+                }
+                _ => Err(AbieosError::JsonToHexError(self.get_error()))
+            }
+        }
+    }
+
+    /// Serialize JSON into binary (output as binary)
+    pub fn json_to_bin(&self, account: &str, datatype: &str, json: String) -> Result<Vec<u8>, AbieosError> {
+        let ctx = self.ctx();
+        let account = self.string_to_name(account)?;
+        let datatype = CString::new(datatype).unwrap();
+        let json = CString::new(json).unwrap();
+        unsafe {
+            match abieos_json_to_bin_reorderable(ctx, account, datatype.as_ptr(), json.as_ptr()) {
+                1 => {
+                    let p = abieos_get_bin_data(ctx);
+                    let len = abieos_get_bin_size(ctx);
+                    let mut result: Vec<c_char> = Vec::with_capacity(len as usize);
+                    std::ptr::copy_nonoverlapping(p, result.as_mut_ptr(), len as usize);
+                    result.set_len(len as usize);
+                    Ok(result.iter().map(|&c| c as u8).collect())
+                }
+                _ => Err(AbieosError::JsonToHexError(self.get_error()))
+            }
+        }
+    }
+
     /// Deserialize HEX string into JSON
     pub fn hex_to_json(&self, account: &str, datatype: &str, hex: String) -> Result<String, AbieosError> {
         let ctx = self.ctx();
         let account = self.string_to_name(account).unwrap();
 
+        let datatype = CString::new(datatype).unwrap();
+        let hex = CString::new(hex).unwrap();
+        unsafe {
+            let p = abieos_hex_to_json(ctx, account, datatype.as_ptr(), hex.as_ptr());
+            if p.is_null() {
+                Err(AbieosError::HexToJsonError(self.get_error()))
+            } else {
+                Ok(string_from_ptr(p))
+            }
+        }
+    }
+
+    pub fn bin_to_json(&self, account: &str, datatype: &str, bin: Vec<u8>) -> Result<String, AbieosError> {
+        let ctx = self.ctx();
+        let account = self.string_to_name(account).unwrap();
+        let datatype = CString::new(datatype).unwrap();
+        let bin_data: *const c_char = bin.as_ptr() as *const c_char;
+        let bin_size: usize = bin.len();
+        unsafe {
+            let p = abieos_bin_to_json(ctx, account, datatype.as_ptr(), bin_data, bin_size);
+            if p.is_null() {
+                Err(AbieosError::BinToJsonError(self.get_error()))
+            } else {
+                Ok(string_from_ptr(p))
+            }
+        }
+    }
+
+    pub fn hex_to_json_native(&self, account: u64, datatype: &str, hex: String) -> Result<String, AbieosError> {
+        let ctx = self.ctx();
         let datatype = CString::new(datatype).unwrap();
         let hex = CString::new(hex).unwrap();
         unsafe {
@@ -172,6 +379,18 @@ impl Abieos {
             } else {
                 Ok(string_from_ptr(p))
             }
+        }
+    }
+
+    pub fn get_type_for_action_native(&self, contract: u64, action: u64) -> Result<String, AbieosError> {
+        println!("Getting type for action: {}", action);
+        println!("Contract: {}", contract);
+        let ctx = self.ctx();
+        let p = unsafe { abieos_get_type_for_action(ctx, contract, action) };
+        if p.is_null() {
+            Err(AbieosError::GetTypeForActionError(self.get_error()))
+        } else {
+            Ok(string_from_ptr(p))
         }
     }
 
@@ -213,7 +432,7 @@ impl Abieos {
             let p = abieos_abi_bin_to_json(
                 ctx,
                 abi_bin_data,
-                abi_bin_size
+                abi_bin_size,
             );
             if p.is_null() {
                 Err(AbieosError::AbiBinToJsonError(self.get_error()))

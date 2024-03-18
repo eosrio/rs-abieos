@@ -1,7 +1,15 @@
 use std::fs::read_to_string;
-use rs_abieos::Abieos;
+use std::time::Instant;
+use rs_abieos::{Abieos, NameLike};
 
 pub const EOSIO_TOKEN_HEX_ABI: &str = "0e656f73696f3a3a6162692f312e30010c6163636f756e745f6e616d65046e616d6505087472616e7366657200040466726f6d0c6163636f756e745f6e616d6502746f0c6163636f756e745f6e616d65087175616e74697479056173736574046d656d6f06737472696e67066372656174650002066973737565720c6163636f756e745f6e616d650e6d6178696d756d5f737570706c79056173736574056973737565000302746f0c6163636f756e745f6e616d65087175616e74697479056173736574046d656d6f06737472696e67076163636f756e7400010762616c616e63650561737365740e63757272656e63795f7374617473000306737570706c790561737365740a6d61785f737570706c79056173736574066973737565720c6163636f756e745f6e616d6503000000572d3ccdcd087472616e73666572000000000000a531760569737375650000000000a86cd445066372656174650002000000384f4d113203693634010863757272656e6379010675696e743634076163636f756e740000000000904dc603693634010863757272656e6379010675696e7436340e63757272656e63795f7374617473000000";
+
+fn measure_call(f: &dyn Fn(), name: &str) {
+    let start = Instant::now();
+    f();
+    let duration = start.elapsed();
+    println!("⏱️ {name} took: {:?}", duration);
+}
 
 fn main() {
 
@@ -16,6 +24,9 @@ fn main() {
     let abi_bin: Vec<u8> = abieos.abi_json_to_bin(abi_content.clone()).unwrap();
     if abi_bin.len() > 0 {
         println!("☑️ ABI Converted: (size: {} bytes)", abi_bin.len());
+
+        // save the binary to a file
+        std::fs::write("abis/eosio.abi.bin", abi_bin.clone()).expect("Failed to write ABI binary to file");
     } else {
         println!("❌ Failed to convert ABI to binary");
     }
@@ -96,7 +107,7 @@ fn main() {
     };
 
 
-    let runs = 2;
+    let runs = 1000;
     println!("\n⚡ Testing hex to json back and forth conversion {runs} times...");
     let start = std::time::Instant::now();
     let account = "eosio.token";
@@ -117,7 +128,7 @@ fn main() {
     println!("hex_to_json: {}", last_json);
 
     println!("\n⚡ Testing loading abi as json...");
-    match abieos.set_abi("eosio", abi_content.as_str()) {
+    match abieos.set_abi_json("eosio", abi_content) {
         Ok(_) => {
             println!("☑️ JSON Abi Loaded successfully")
         }
@@ -154,14 +165,14 @@ fn main() {
         String::new()
     });
     println!("{}", result2);
-    
+
     if result == result2 {
         println!("☑️ The result is the same for ordered and unordered JSONs");
     } else {
         println!("❌ The result is different for ordered and unordered JSONs");
     }
 
-    assert_eq!(result,result2, "The result should be the same for ordered and unordered jsons");
+    assert_eq!(result, result2, "The result should be the same for ordered and unordered jsons");
 
     // deserialize
     println!("\n⚡ Deserializing...");
@@ -174,4 +185,67 @@ fn main() {
 
     let parsed_json = serde_json::from_str::<serde_json::Value>(ds_result.as_str()).unwrap();
     println!("From: {} | To: {}", parsed_json["from"], parsed_json["receiver"]);
+
+    // transaction example
+    println!("\n⚡ Serializing Transaction... (oneshot)");
+
+    let time_start = std::time::Instant::now();
+    let trx_json = r#"{
+            "expiration": "2018-06-27T20:33:54.000",
+            "ref_block_num": 45323,
+            "ref_block_prefix": 2628749070,
+            "max_net_usage_words": 0,
+            "max_cpu_usage_ms": 0,
+            "delay_sec": 0,
+            "context_free_actions": [],
+            "actions": [{
+                "account": "eosio.token",
+                "name": "transfer",
+                "authorization":[{
+                    "actor":"useraaaaaaaa",
+                    "permission":"active"
+                }],
+                "data":"608C31C6187315D6708C31C6187315D60100000000000000045359530000000000"
+            }],
+            "transaction_extensions":[]
+        }"#;
+
+    match Abieos::new()
+        .contract(NameLike::StringRef("eosio"))
+        .load_json_file("abis/transaction.abi.json")
+        .unwrap()
+        .json_to_hex(
+            "transaction",
+            trx_json.to_string(),
+        ) {
+        Ok(x) => {
+            println!("json_to_hex: {}", x.clone());
+            let duration = time_start.elapsed();
+            println!("Time elapsed (instancing, loading, serialization) was: {:?}", duration);
+        }
+        Err(_) => println!("❌ Failed to convert json to hex"),
+    };
+
+    measure_call(&|| {
+        abieos.contract(NameLike::StringRef("eosio")).load_json_file("abis/eosio.abi").unwrap();
+        ()
+    }, "loading eosio abi from file (oneshot)");
+
+    measure_call(&|| {
+        let abi_content = read_to_string("abis/eosio.abi").unwrap();
+        abieos.set_abi_json("eosio",abi_content).unwrap();
+        ()
+    }, "loading eosio abi from file (procedural)");
+
+    measure_call(&|| {
+        abieos.contract(NameLike::StringRef("eosio")).load_json_file("abis/transaction.abi.json").unwrap();
+        ()
+    }, "loading transaction abi from file");
+
+    let json_data = read_to_string("abis/sample.json").unwrap();
+
+    measure_call(&|| {
+        abieos.contract(NameLike::StringRef("eosio")).json_to_hex("delegatebw", json_data.clone()).unwrap();
+        ()
+    }, "serializing sample action");
 }
