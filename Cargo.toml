@@ -1,5 +1,5 @@
 [package]
-name = "rs-abieos"
+name = "rs_abieos"
 version = "0.1.1"
 edition = "2021"
 build = "build.rs"
@@ -14,7 +14,7 @@ keywords = ["eosio", "antelope", "abi", "serialization", "deserialization"]
 
 
 [[bin]]
-name = "rs-abieos"
+name = "rs_abieos"
 path = "bin-src/main.rs"
 doc = false
 
