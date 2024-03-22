@@ -9,7 +9,7 @@ repository = "https://github.com/eosrio/rs-abieos"
 description = """
 A Rust wrapper library for Abieos, used for Antelope (former EOSIO) ABI serialization and deserialization.
 """
-categories = ["abi", "encoding", "parsing"]
+categories = ["encoding", "parsing"]
 keywords = ["eosio", "antelope", "abi", "serialization", "deserialization"]
 
 
