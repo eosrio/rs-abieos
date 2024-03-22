@@ -22,7 +22,7 @@ fn main() {
     // converting an abi from json to binary
     println!("\n⚡ Testing conversion from abi json to binary...");
     let abi_bin: Vec<u8> = abieos.abi_json_to_bin(abi_content.clone()).unwrap();
-    if abi_bin.len() > 0 {
+    if !abi_bin.is_empty() {
         println!("☑️ ABI Converted: (size: {} bytes)", abi_bin.len());
 
         // save the binary to a file
