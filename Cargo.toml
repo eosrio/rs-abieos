@@ -1,6 +1,6 @@
 [package]
 name = "rs_abieos"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 build = "build.rs"
 authors = ["Igor Lins e Silva"]
@@ -12,24 +12,11 @@ A Rust wrapper library for Abieos, used for Antelope (former EOSIO) ABI serializ
 categories = ["encoding", "parsing"]
 keywords = ["eosio", "antelope", "abi", "serialization", "deserialization"]
 
-
 [[bin]]
 name = "rs_abieos"
 path = "bin-src/main.rs"
 doc = false
 
-[dependencies]
-serde = { version = "1.0.197", features = ["derive"] }
-serde_json = "1.0.114"
-
 [build-dependencies]
 cc = { version = "1.0.90", features = ["parallel"] }
-cmake = "0.1.50"
-sys-info = "0.9.1"
 bindgen = "0.69.4"
-
-[profile.dev]
-opt-level = 0
-
-[profile.release]
-opt-level = 3

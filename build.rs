@@ -63,9 +63,9 @@ fn main() {
     println!("cargo:rustc-link-lib=static=abieos");
 
     // Link the system C++ shared library.
-    if sys_info::os_type().unwrap() == "Linux" {
-        println!("cargo:rustc-link-lib=stdc++");
-    } else {
-        println!("cargo:rustc-link-lib=c++");
-    }
+    // if sys_info::os_type().unwrap() == "Linux" {
+    //     println!("cargo:rustc-link-lib=stdc++");
+    // } else {
+    //     println!("cargo:rustc-link-lib=c++");
+    // }
 }

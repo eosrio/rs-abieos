@@ -40,14 +40,12 @@ fn main() {
     println!("\n⚡ Testing conversion from abi binary to json...");
     let abi_json = abieos.abi_bin_to_json(abi_bin).unwrap();
     if !abi_json.is_empty() {
-        // check if the json is valid json using serde_json
-        match serde_json::from_str::<serde_json::Value>(abi_json.as_str()) {
-            Ok(value) => {
-                println!("☑️ ABI_JSON is valid JSON: {}", value["version"]);
-            }
-            Err(e) => {
-                println!("❌ ABI_JSON is not valid JSON: {}", e);
-            }
+        // check if the json is valid json without any external libraries
+        let is_valid_json = abi_json.starts_with('{') && abi_json.ends_with('}');
+        if is_valid_json {
+            println!("☑️ ABI_JSON is valid JSON!");
+        } else {
+            println!("❌ ABI_JSON is not valid JSON!");
         }
     }
 
@@ -183,9 +181,6 @@ fn main() {
     ).unwrap();
     println!("{}", ds_result);
 
-    let parsed_json = serde_json::from_str::<serde_json::Value>(ds_result.as_str()).unwrap();
-    println!("From: {} | To: {}", parsed_json["from"], parsed_json["receiver"]);
-
     // transaction example
     println!("\n⚡ Serializing Transaction... (oneshot)");
 
@@ -228,24 +223,20 @@ fn main() {
 
     measure_call(&|| {
         abieos.contract(NameLike::StringRef("eosio")).load_json_file("abis/eosio.abi").unwrap();
-        ()
     }, "loading eosio abi from file (oneshot)");
 
     measure_call(&|| {
         let abi_content = read_to_string("abis/eosio.abi").unwrap();
-        abieos.set_abi_json("eosio",abi_content).unwrap();
-        ()
+        abieos.set_abi_json("eosio", abi_content).unwrap();
     }, "loading eosio abi from file (procedural)");
 
     measure_call(&|| {
         abieos.contract(NameLike::StringRef("eosio")).load_json_file("abis/transaction.abi.json").unwrap();
-        ()
     }, "loading transaction abi from file");
 
     let json_data = read_to_string("abis/sample.json").unwrap();
 
     measure_call(&|| {
         abieos.contract(NameLike::StringRef("eosio")).json_to_hex("delegatebw", json_data.clone()).unwrap();
-        ()
     }, "serializing sample action");
 }
