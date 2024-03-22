@@ -1,46 +1,44 @@
-use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
+/// Error types
 #[derive(Debug)]
 pub enum AbieosError {
-    StringToNameError,
-    NameToStringError,
-    SetAbiError(String),
-    JsonToHexError(String),
-    HexToJsonError(String),
-    UnknownError,
-    NameTooLongError,
-    GetTypeForActionError(String),
-    GetTypeForTableError(String),
-    GetTypeForActionResultError(String),
-    AbiBinToJsonError(String),
-    AbiJsonToBinError(String),
-    AbiNotLoadedError,
-    FileReadError,
-    BinToJsonError(String),
+    Unknown,
+    StringToName,
+    NameToString,
+    NameTooLong,
+    AbiNotLoaded,
+    FileRead,
+    SetAbi(String),
+    JsonToHex(String),
+    HexToJson(String),
+    GetTypeForAction(String),
+    GetTypeForTable(String),
+    GetTypeForActionResult(String),
+    AbiBinToJson(String),
+    AbiJsonToBin(String),
+    BinToJson(String),
 }
 
 impl Display for AbieosError {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
-            AbieosError::NameTooLongError => write!(f, "Name is too long"),
-            AbieosError::StringToNameError => write!(f, "Failed to convert string to name"),
-            AbieosError::NameToStringError => write!(f, "Failed to convert name to string"),
-            AbieosError::SetAbiError(e) => write!(f, "Failed to set ABI: {}", e),
-            AbieosError::JsonToHexError(e) => write!(f, "Failed to serialize JSON: {}", e),
-            AbieosError::HexToJsonError(e) => write!(f, "Failed to deserialize Binary: {}", e),
-            AbieosError::GetTypeForActionError(e) => write!(f, "Failed to get type for action: {}", e),
-            AbieosError::GetTypeForTableError(e) => write!(f, "Failed to get type for table: {}", e),
-            AbieosError::GetTypeForActionResultError(e) => write!(f, "Failed to get type for action result: {}", e),
-            AbieosError::AbiBinToJsonError(e) => write!(f, "Failed to convert ABI binary to JSON: {}", e),
-            AbieosError::AbiJsonToBinError(e) => write!(f, "Failed to convert ABI JSON to binary: {}", e),
-            AbieosError::AbiNotLoadedError => write!(f, "ABI not loaded in this contract"),
-            AbieosError::FileReadError => write!(f, "Failed to read file"),
-            AbieosError::BinToJsonError(e) => write!(f, "Failed to convert binary to JSON: {}", e),
-            AbieosError::UnknownError => write!(f, "Unknown error occurred"),
+            AbieosError::NameTooLong => write!(f, "Name is too long"),
+            AbieosError::StringToName => write!(f, "Failed to convert string to name"),
+            AbieosError::NameToString => write!(f, "Failed to convert name to string"),
+            AbieosError::SetAbi(e) => write!(f, "Failed to set ABI: {}", e),
+            AbieosError::JsonToHex(e) => write!(f, "Failed to serialize JSON: {}", e),
+            AbieosError::HexToJson(e) => write!(f, "Failed to deserialize Binary: {}", e),
+            AbieosError::GetTypeForAction(e) => write!(f, "Failed to get type for action: {}", e),
+            AbieosError::GetTypeForTable(e) => write!(f, "Failed to get type for table: {}", e),
+            AbieosError::GetTypeForActionResult(e) => write!(f, "Failed to get type for action result: {}", e),
+            AbieosError::AbiBinToJson(e) => write!(f, "Failed to convert ABI binary to JSON: {}", e),
+            AbieosError::AbiJsonToBin(e) => write!(f, "Failed to convert ABI JSON to binary: {}", e),
+            AbieosError::AbiNotLoaded => write!(f, "ABI not loaded in this contract"),
+            AbieosError::FileRead => write!(f, "Failed to read file"),
+            AbieosError::BinToJson(e) => write!(f, "Failed to convert binary to JSON: {}", e),
+            AbieosError::Unknown => write!(f, "Unknown error occurred"),
         }
     }
 }
-
-impl Error for AbieosError {}
 

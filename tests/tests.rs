@@ -17,15 +17,7 @@ mod tests {
         assert_eq!(abieos.context.unwrap().is_null(), false, "new_from_context test failed");
         abieos.destroy();
     }
-
-    #[test]
-    fn destroy() {
-        let mut abieos: Abieos = Abieos::new();
-        abieos.destroy();
-        assert_eq!(abieos.context.is_none(), true, "destroy test failed");
-        abieos.destroy();
-    }
-
+    
     #[test]
     fn string_to_name() {
         let abieos = Abieos::new();

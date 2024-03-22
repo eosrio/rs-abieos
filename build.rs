@@ -1,9 +1,7 @@
 use std::process::Command;
-use bindgen;
-use cc;
 
 fn main() {
-    
+
     // call "git submodule update --init --recursive"
     let git_update_result = Command::new("git")
         .args(&["submodule", "update", "--init", "--recursive", "-f"])
