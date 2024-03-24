@@ -6,7 +6,9 @@ converting between native and string names, and more.
 
 This wrapper is currently based on the vanilla version of the [AntelopeIO/abieos](https://github.com/AntelopeIO/abieos)
 
-Test cases are being completely rewritten in Rust.
+Test cases are being completely rewritten in Rust. They can be found in the `tests` directory.
+
+`bin-src/main.rs` is a simple executable example that demonstrates how to use the library.
 
 ## Setup Instructions
 
@@ -14,7 +16,7 @@ To use `rs_abieos` in your Rust project, you need to add it as a dependency in y
 
 ```toml
 [dependencies]
-rs_abieos = "0.1.1"
+rs_abieos = "0.1.3"
 ```
 
 Then, run the following command to download and compile the `rs_abieos` library:
@@ -25,8 +27,16 @@ cargo build
 
 ### Building with Clang 18 (recommended)
 
-You can use alternative compilers to build the library. We recommend using Clang 18 for better compatibility with
-the `abieos` C library. To do so, run the following command:
+You can use alternative compilers to build the library.
+We recommend using Clang 18 to build the `abieos` C library.
+
+Make sure you have Clang 18 installed on your system:
+
+```bash
+sudo apt install clang-18
+```
+
+Then, build the library using the following command:
 
 ```bash
 CXX=clang++-18 CC=clang-18 cargo build
@@ -46,7 +56,7 @@ cargo test
 
 Step 1 - Create a new instance of `Abieos`:
 
-```rust
+```
 use rs_abieos::Abieos;
 let abieos = Abieos::new();
 ```
@@ -56,12 +66,10 @@ Step 2 - Load the ABI from a file into a contract name:
 This will store the ABI in the `Abieos` instance and allow you to use the ABI-related functions.
 You only need to do this once for each ABI file.
 
-```rust
+```
 let abi_content = std::fs::read_to_string("path/to/your/abi/file").expect("Failed to read ABI file");
 let loading_status = abieos.set_abi("CONTRACT_NAME", abi_content.as_str()).unwrap();
 println!("ABI loaded: {}", loading_status);
-
-// or
 ```
 
 ## Usage Examples
