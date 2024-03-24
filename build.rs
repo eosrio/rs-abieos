@@ -1,7 +1,6 @@
 use std::process::Command;
 
-fn main() {
-
+fn update_submodules() {
     // call "git submodule update --init --recursive"
     let git_update_result = Command::new("git")
         .args(&["submodule", "update", "--init", "--recursive", "-f"])
@@ -9,9 +8,13 @@ fn main() {
         .expect("Failed to execute git");
 
     println!("git submodule update --init --recursive: {}", String::from_utf8_lossy(&git_update_result.stderr));
+}
 
+fn build_linux() {
 
-    // // Build native bindings :: "bindgen lib/abieos/src/abieos.h -o src/bindings.rs"
+    update_submodules();
+
+    // Build native bindings :: "bindgen lib/abieos/src/abieos.h -o src/bindings.rs"
     bindgen::builder()
         .header("lib/abieos/src/abieos.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
@@ -20,17 +23,14 @@ fn main() {
         .write_to_file("src/bindings.rs")
         .expect("Couldn't write bindings!");
 
-    // Build the native library with rust
+    // Build fpconv library
     cc::Build::new()
         .includes(&[
-            "lib/abieos/include"
+            "lib/abieos/include",
         ])
         .files(&[
             "lib/abieos/include/eosio/fpconv.c",
         ])
-        .flag("-Wall")
-        .flag("-Wextra")
-        .flag("-Wno-unused-parameter")
         .static_flag(true)
         .out_dir("target/lib/fpconv")
         .compile("fpconv");
@@ -50,22 +50,34 @@ fn main() {
         .flag("-Wall")
         .flag("-Wextra")
         .flag("-Wno-unused-parameter")
-        .flag("-std=c++17")
+        .flag("-std=gnu++17")
         .static_flag(true)
         .cpp_link_stdlib("stdc++")
         .out_dir("target/lib/abieos")
         .compile("abieos");
 
-    // Add search path for the shared library
     println!("cargo:rustc-link-search={}/build", "target/lib");
-
-    // Link the shared abieos library
     println!("cargo:rustc-link-lib=static=abieos");
+    println!("cargo:rustc-link-lib=stdc++");
+}
 
-    // Link the system C++ shared library.
-    // if sys_info::os_type().unwrap() == "Linux" {
-    //     println!("cargo:rustc-link-lib=stdc++");
-    // } else {
-    //     println!("cargo:rustc-link-lib=c++");
-    // }
+fn main() {
+
+    match sys_info::os_type() {
+        Ok(os_type) => {
+            match os_type.as_str() {
+                "Linux" => {
+                    println!("OS Type: Linux");
+                    build_linux();
+                }
+                _ => {
+                    println!("OS Type: {}", os_type);
+                    panic!("Unsupported OS");
+                }
+            }
+        }
+        Err(e) => {
+            println!("Error: {}", e);
+        }
+    }
 }
