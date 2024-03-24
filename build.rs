@@ -3,7 +3,7 @@ use std::process::Command;
 fn update_submodules() {
     // call "git submodule update --init --recursive"
     let git_update_result = Command::new("git")
-        .args(&["submodule", "update", "--init", "--recursive", "-f"])
+        .args(["submodule", "update", "--init", "--recursive", "-f"])
         .output()
         .expect("Failed to execute git");
 
@@ -56,7 +56,7 @@ fn build_linux() {
         .out_dir("target/lib/abieos")
         .compile("abieos");
 
-    println!("cargo:rustc-link-search={}/build", "target/lib");
+    println!("cargo:rustc-link-search=target/lib/build");
     println!("cargo:rustc-link-lib=static=abieos");
     println!("cargo:rustc-link-lib=stdc++");
 }
