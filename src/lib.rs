@@ -117,9 +117,9 @@ impl AbieosContract {
     }
 
     /// Deserialize HEX string into JSON
-    pub fn hex_to_json(&self, datatype: &str, p1: String) -> Result<String, AbieosError> {
+    pub fn hex_to_json(&self, datatype: &str, hex: String) -> Result<String, AbieosError> {
         let ref_abieos = Abieos::from_context(self.context);
-        ref_abieos.hex_to_json_native(self.name, datatype, p1)
+        ref_abieos.hex_to_json_native(self.name, datatype, hex)
     }
 }
 
