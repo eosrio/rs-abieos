@@ -1,6 +1,6 @@
 # Rust Abieos
 
-`rs_abieos` is a Rust library that provides a wrapper for the `abieos` C library. It allows you to handle data from
+`rs_abieos` is a Rust library that provides a wrapper for the `abieos` C++ library. It allows you to handle data from
 Antelope blockchains by providing functionalities such as converting between binary and JSON formats for ABI files,
 converting between native and string names, and more.
 
@@ -9,6 +9,18 @@ This wrapper is currently based on the vanilla version of the [AntelopeIO/abieos
 Test cases are being completely rewritten in Rust. They can be found in the `tests` directory.
 
 `bin-src/main.rs` is a simple executable example that demonstrates how to use the library.
+
+## Pre requisites
+
+- Linux
+- C++ toolchain. You can use alternative compilers to build the library.
+  We recommend using Clang 18 to build the `abieos` C++ library.
+
+Make sure you have Clang 18 installed on your system:
+
+```bash
+sudo apt install clang-18
+```
 
 ## Setup Instructions
 
@@ -25,15 +37,6 @@ cargo build
 ```
 
 ### Building with Clang 18 (recommended)
-
-You can use alternative compilers to build the library.
-We recommend using Clang 18 to build the `abieos` C library.
-
-Make sure you have Clang 18 installed on your system:
-
-```bash
-sudo apt install clang-18
-```
 
 Then, build the library using the following command:
 
