@@ -421,8 +421,6 @@ impl Abieos {
 
     /// Get the type for an action (u64 names as input)
     pub fn get_type_for_action_native(&self, contract: u64, action: u64) -> Result<String, AbieosError> {
-        println!("Getting type for action: {}", action);
-        println!("Contract: {}", contract);
         let ctx = self.ctx();
         let p = unsafe { abieos_get_type_for_action(ctx, contract, action) };
         if p.is_null() {
