@@ -19,7 +19,9 @@ Test cases are being completely rewritten in Rust. They can be found in the `tes
 Make sure you have Clang 18 installed on your system:
 
 ```bash
-sudo apt install clang-18
+wget https://apt.llvm.org/llvm.sh
+chmod +x llvm.sh
+sudo ./llvm.sh 18
 ```
 
 ## Setup Instructions
@@ -34,13 +36,7 @@ Then, run the following command to download and compile the `rs_abieos` library:
 
 ```bash
 cargo build
-```
-
-### Building with Clang 18 (recommended)
-
-Then, build the library using the following command:
-
-```bash
+# or if you have another default compiler, use clang-18 to build the library
 CXX=clang++-18 CC=clang-18 cargo build
 ```
 
@@ -49,85 +45,110 @@ CXX=clang++-18 CC=clang-18 cargo build
 To run the test cases, use the following command:
 
 ```bash
-CXX=clang++-18 CC=clang-18 cargo test
-# or
 cargo test
+# or
+CXX=clang++-18 CC=clang-18 cargo test
 ```
 
-## General Usage Guidelines
+## Quick Usage Example
 
-Step 1 - Create a new instance of `Abieos`:
+Short example of how to use the library on new Rust binary project:
 
-```
+```rust
+// Step 1 - Bring rs_abieos into scope
 use rs_abieos::Abieos;
-let abieos = Abieos::new();
+
+fn main() {
+  // Step 2 - Create an instance of Abieos
+  let abieos = Abieos::new();
+
+  // Let's try to convert a string to u64 name
+  let name = "alice";
+  let name_u64 = abieos.string_to_name(name).unwrap();
+  println!("Name: {}, Name_u64: {}", name, name_u64);
+}
 ```
 
-Step 2 - Load the ABI from a file into a contract name:
+## Detailed Example
 
-This will store the ABI in the `Abieos` instance and allow you to use the ABI-related functions.
-You only need to do this once for each ABI file.
+For this example, download the [eosio.system abi file](https://raw.githubusercontent.com/eosrio/rs-abieos/master/abis/eosio.abi) and copy to your project root as eosio.abi.json
 
+```rust
+use rs_abieos::{AbiLike, Abieos, NameLike};
+
+fn main() {
+  let abieos = Abieos::new();
+  let path = "eosio.abi.json";
+
+  // Read the ABI file
+  let abi_content = match std::fs::read_to_string(path) {
+    Ok(content) => content,
+    Err(e) => {
+      eprintln!("Failed to read ABI file: {}", e);
+      return;
+    }
+  };
+
+  // define the NameLike enum to hold the account name using either a string (String) or a reference (StringRef) or an u64 (U64)
+  let account_name = "eosio";
+  let eosio = NameLike::StringRef(&account_name);
+
+  // create a eosio contract instance using the NameLike enum
+  let mut eosio_contract = abieos.contract(eosio);
+
+  // load the abi using the contract instance
+  // load_abi method takes an AbiLike enum which can be either a Json (String), Hex (String) or Bin (Vec<u8>)
+  let load_status = eosio_contract.load_abi(AbiLike::Json(abi_content));
+
+  // check if the abi was loaded successfully
+  match load_status {
+    Ok(_) => println!("ABI loaded successfully"),
+    Err(e) => eprintln!("Failed to load ABI: {}", e),
+  }
+
+  // Let's serialize an action using the eosio contract instance
+
+  // define the action data (example eosio::buyram)
+  let action_data = r#"{
+            "payer":"alice",
+            "receiver":"bob",
+            "quant":"100.0000 SYS"
+    }"#;
+
+  // retrieve the datatype for the action
+  let datatype = match eosio_contract.get_type_for_action("buyram") {
+    Ok(datatype) => datatype,
+    Err(e) => {
+      eprintln!("Failed to get datatype for action: {}", e);
+      return;
+    }
+  };
+
+  // serialize the action data
+  let serialized_action = eosio_contract.json_to_hex(datatype.as_str(), action_data.to_string());
+
+  let hex_action = match serialized_action {
+    Ok(hex_data) => {
+      println!("Serialized action data: {}", hex_data);
+      hex_data
+    }
+    Err(e) => {
+      eprintln!("Failed to serialize action data: {}", e);
+      return;
+    },
+  };
+
+  // Let's deserialize the serialized action data
+  let json_action = eosio_contract.hex_to_json(datatype.as_str(), hex_action);
+
+  match json_action {
+    Ok(json_data) => println!("Deserialized action data: {}", json_data),
+    Err(e) => eprintln!("Failed to deserialize action data: {}", e),
+  }
+
+}
 ```
-let abi_content = std::fs::read_to_string("path/to/your/abi/file").expect("Failed to read ABI file");
-let loading_status = abieos.set_abi("CONTRACT_NAME", abi_content.as_str()).unwrap();
-println!("ABI loaded: {}", loading_status);
-```
 
-## Usage Examples
-
-Here are some examples of how to use the `rs_abieos` library:
-
-### Creating a new instance of Abieos
-
-```
-use rs_abieos::Abieos;
-let abieos = Abieos::new();
-```
-
-### Converting a string name to a native name (u64)
-
-```
-let native_name = abieos.string_to_name("eosio.token").unwrap();
-println!("Native name: {}", native_name);
-```
-
-### Converting a native name (u64) to a string name
-
-```
-let string_name = abieos.name_to_string(native_name).unwrap();
-println!("String name: {}", string_name);
-```
-
-### Loading an ABI from a file (require before any other ABI-related operations)
-
-```
-let abi_content = std::fs::read_to_string("path/to/your/abi/file").expect("Failed to read ABI file");
-let loading_status = abieos.set_abi("CONTRACT_NAME", abi_content.as_str()).unwrap();
-println!("ABI loaded: {}", loading_status);
-```
-
-### Converting JSON to HEX
-
-```
-let json = r#"
-{
-    "from":"alice",
-    "to":"bob",
-    "quantity":"1.0000 EOS",
-    "memo":"Hello!"
-}"#;
-
-let hex = abieos.json_to_hex("eosio.token", "transfer", json.to_string()).unwrap();
-println!("HEX: {}", hex);
-```
-
-### Converting HEX to JSON
-
-```
-let hex: &str = "0000000000855C340000000000000E3D102700000000000004454F53000000000648656C6C6F21";
-let json = abieos.hex_to_json("eosio.token", "transfer", hex).unwrap();
-println!("JSON: {}", json);
-```
+## API Documentation
 
 Please refer to the library's API documentation for more detailed information on each function.
