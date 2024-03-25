@@ -14,9 +14,8 @@ Test cases are being completely rewritten in Rust. They can be found in the `tes
 
 To use `rs_abieos` in your Rust project, you need to add it as a dependency in your `Cargo.toml` file:
 
-```toml
-[dependencies]
-rs_abieos = "0.1.3"
+```bash
+cargo add rs_abieos
 ```
 
 Then, run the following command to download and compile the `rs_abieos` library:
