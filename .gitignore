@@ -2,3 +2,4 @@
 /Cargo.lock
 build
 .idea
+!target/doc
