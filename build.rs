@@ -63,6 +63,11 @@ fn build_linux() {
 
 fn main() {
 
+    if std::env::var("DOCS_RS").is_ok() {
+        // Skip building on docs.rs
+        return;
+    }
+
     match sys_info::os_type() {
         Ok(os_type) => {
             match os_type.as_str() {
