@@ -110,6 +110,15 @@ impl AbieosContract {
         }
     }
 
+    /// Get data type for a table
+    pub fn get_type_for_table(&self, table: &str) -> Result<String, AbieosError> {
+        let ref_abieos = Abieos::from_context(self.context);
+        match ref_abieos.string_to_name(table) {
+            Ok(x) => ref_abieos.get_type_for_table_native(self.name, x),
+            Err(_) => Err(AbieosError::StringToName)
+        }
+    }
+
     /// Serialize JSON into binary (output as HEX)
     pub fn json_to_hex(&self, datatype: &str, json: String) -> Result<String, AbieosError> {
         let ref_abieos = Abieos::from_context(self.context);
@@ -444,6 +453,17 @@ impl Abieos {
             }
         }
     }
+
+        /// Get the type for a table (u64 names as input)
+        pub fn get_type_for_table_native(&self, contract: u64, table: u64) -> Result<String, AbieosError> {
+            let ctx = self.ctx();
+            let p = unsafe { abieos_get_type_for_table(ctx, contract, table) };
+            if p.is_null() {
+                Err(AbieosError::GetTypeForAction(self.get_error()))
+            } else {
+                Ok(string_from_ptr(p))
+            }
+        }
 
     /// Get the type for an action result
     pub fn get_type_for_action_result(&self, contract: &str, action: &str) -> Result<String, AbieosError> {
