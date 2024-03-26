@@ -8,8 +8,6 @@ This wrapper is currently based on the vanilla version of the [AntelopeIO/abieos
 
 Test cases are being completely rewritten in Rust. They can be found in the `tests` directory.
 
-`bin-src/main.rs` is a simple executable example that demonstrates how to use the library.
-
 ## Pre requisites
 
 - Linux
@@ -148,6 +146,8 @@ fn main() {
 
 }
 ```
+
+`bin-src/main.rs` contains a more detailed executable example that demonstrates multiple use cases for the library.
 
 ## API Documentation
 
