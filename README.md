@@ -1,14 +1,21 @@
 # Rust Abieos
 
+[crates-badge]: https://img.shields.io/crates/v/rs_abieos.svg
+[crates-url]: https://crates.io/crates/rs_abieos
+
+[![Crates.io][crates-badge]][crates-url]
+
+#### [API Documentation](https://docs.rs/rs_abieos/)
+
 `rs_abieos` is a Rust library that provides a wrapper for the `abieos` C++ library. It allows you to handle data from
 Antelope blockchains by providing functionalities such as converting between binary and JSON formats for ABI files,
 converting between native and string names, and more.
 
 This wrapper is currently based on the vanilla version of the [AntelopeIO/abieos](https://github.com/AntelopeIO/abieos)
 
-Test cases are being completely rewritten in Rust. They can be found in the `tests` directory.
+_Test cases are being completely rewritten in Rust. They can be found in the `tests` directory._
 
-## Pre requisites
+## Requirements
 
 - Linux
 - C++ toolchain. You can use alternative compilers to build the library.
@@ -36,16 +43,6 @@ Then, run the following command to download and compile the `rs_abieos` library:
 cargo build
 # or if you have another default compiler, use clang-18 to build the library
 CXX=clang++-18 CC=clang-18 cargo build
-```
-
-### Testing
-
-To run the test cases, use the following command:
-
-```bash
-cargo test
-# or
-CXX=clang++-18 CC=clang-18 cargo test
 ```
 
 ## Quick Usage Example
@@ -149,6 +146,16 @@ fn main() {
 
 `bin-src/main.rs` contains a more detailed executable example that demonstrates multiple use cases for the library.
 
-## API Documentation
+Please refer to the library's [API documentation](https://docs.rs/rs_abieos/0.1.3/rs_abieos) for more detailed information on each function.
 
-Please refer to the library's API documentation for more detailed information on each function.
+### Library Development
+
+#### Testing
+
+To run the test cases, use the following command:
+
+```bash
+cargo test
+# or
+CXX=clang++-18 CC=clang-18 cargo test
+```
