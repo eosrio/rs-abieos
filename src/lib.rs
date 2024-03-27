@@ -7,7 +7,6 @@
 //! Abieos is a Rust wrapper for the abieos C library
 
 use std::ffi::{CStr, CString};
-use std::ops::Deref;
 use std::os::raw::c_char;
 
 mod abieos_error;
