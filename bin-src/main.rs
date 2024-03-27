@@ -1,10 +1,11 @@
+use std::ffi::{CStr, CString};
 use std::fs::read_to_string;
 use std::time::Instant;
 use rs_abieos::{Abieos, NameLike};
 
 pub const EOSIO_TOKEN_HEX_ABI: &str = "0e656f73696f3a3a6162692f312e30010c6163636f756e745f6e616d65046e616d6505087472616e7366657200040466726f6d0c6163636f756e745f6e616d6502746f0c6163636f756e745f6e616d65087175616e74697479056173736574046d656d6f06737472696e67066372656174650002066973737565720c6163636f756e745f6e616d650e6d6178696d756d5f737570706c79056173736574056973737565000302746f0c6163636f756e745f6e616d65087175616e74697479056173736574046d656d6f06737472696e67076163636f756e7400010762616c616e63650561737365740e63757272656e63795f7374617473000306737570706c790561737365740a6d61785f737570706c79056173736574066973737565720c6163636f756e745f6e616d6503000000572d3ccdcd087472616e73666572000000000000a531760569737375650000000000a86cd445066372656174650002000000384f4d113203693634010863757272656e6379010675696e743634076163636f756e740000000000904dc603693634010863757272656e6379010675696e7436340e63757272656e63795f7374617473000000";
 
-fn measure_call(f: &dyn Fn(), name: &str) {
+fn measure_call(f: &mut dyn FnMut(), name: &str) {
     let start = Instant::now();
     f();
     let duration = start.elapsed();
@@ -60,14 +61,39 @@ fn main() {
 
     // name conversion test
     println!("\n⚡ Testing name conversion...");
-    let original_name = "eosio";
-    let native_name = abieos.string_to_name(original_name).unwrap();
-    let name_as_string = abieos.name_to_string(native_name).unwrap();
+    let original_name = "alice";
+    let mut native_name: u64 = 0;
+    let mut name_as_string: &str = "";
+
+    // measure the time taken to convert the name
+    measure_call(&mut || {
+        native_name = abieos.string_to_name(original_name).unwrap();
+        name_as_string = abieos.name_to_string(native_name).unwrap();
+    }, "name conversion (rust string)");
     if name_as_string == original_name {
         println!("☑️ {original_name} => {native_name} => {name_as_string}");
     } else {
         println!("❌ Name conversion failed");
     }
+
+    // name conversion test
+    println!("\n⚡ Testing name conversion (C-String)...");
+    let original_name = c"eosio";
+    let mut native_name: u64 = 0;
+    let mut name_as_string: &CStr = c"";
+
+    // measure the time taken to convert the name
+    measure_call(&mut || {
+        native_name = abieos.c_string_to_name(original_name);
+        name_as_string = abieos.name_to_cstr(native_name);
+    }, "name conversion (C-string)");
+
+    if name_as_string.eq(original_name) {
+        println!("☑️ {:?} => {native_name} => {:?}", original_name, name_as_string);
+    } else {
+        println!("❌ Name conversion failed");
+    }
+
 
     println!("\n⚡ Testing action type conversion...");
     match abieos.get_type_for_action("eosio.token", "transfer") {
@@ -105,35 +131,64 @@ fn main() {
     };
 
 
-    let runs = 1000;
-    println!("\n⚡ Testing hex to json back and forth conversion {runs} times...");
-    let start = std::time::Instant::now();
-    let account = "eosio.token";
-    let action = "transfer";
-    let mut last_json = String::new();
-    for _ in 0..runs {
-        let json_out = abieos.hex_to_json(account, action, bin.clone()).unwrap();
-        let bin_out = abieos.json_to_hex(account, action, json_out.to_string()).unwrap();
-        if !last_json.is_empty() {
-            assert_eq!(json_out, last_json);
-            assert_eq!(bin.clone(), bin_out.to_string());
+    {
+        let runs = 1000;
+        println!("\n⚡ Testing hex to json back and forth conversion {runs} times...");
+        let start = Instant::now();
+        let account = "eosio.token";
+        let action = "transfer";
+        let mut last_json = String::new();
+        for _ in 0..runs {
+            let json_out = abieos.hex_to_json(account, action, bin.clone()).unwrap();
+            let bin_out = abieos.json_to_hex(account, action, json_out.to_string()).unwrap();
+            if !last_json.is_empty() {
+                assert_eq!(json_out, last_json);
+                assert_eq!(bin.clone(), bin_out.to_string());
+            }
+            last_json = json_out.to_string();
         }
-        last_json = json_out.to_string();
+        let duration = start.elapsed();
+        // Average time
+        println!("Average time elapsed in hex_to_json() is: {:?}", duration / runs);
+        println!("hex_to_json: {}", last_json);
     }
-    let duration = start.elapsed();
-    // Average time
-    println!("Average time elapsed in hex_to_json() is: {:?}", duration / runs);
-    println!("hex_to_json: {}", last_json);
 
-    println!("\n⚡ Testing loading abi as json...");
-    match abieos.set_abi_json("eosio", abi_content) {
-        Ok(_) => {
-            println!("☑️ JSON Abi Loaded successfully")
+    {
+        let runs = 1000;
+        println!("\n⚡ Testing hex to json using C-String back and forth conversion {runs} times...");
+        let start = Instant::now();
+        let account = c"eosio.token";
+        let action = c"transfer";
+        let mut last_json = c"";
+        let bin_c = CString::new(bin).unwrap();
+        let mut bin: &CStr = bin_c.as_c_str();
+        for _ in 0..runs {
+            let json_out = abieos.hex_to_json_c(account, action, bin);
+            let bin_out = abieos.json_to_hex_c(account, action, json_out);
+            if !last_json.is_empty() {
+                assert_eq!(json_out, last_json);
+                assert_eq!(bin, bin_out);
+            }
+            last_json = json_out;
+            bin = bin_out;
         }
-        Err(e) => {
-            println!("❌ Failed to load JSON Abi: {}", e)
-        }
-    };
+        let duration = start.elapsed();
+        // Average time
+        println!("Average time elapsed in hex_to_json_c() + json_to_hex_c() is: {:?}", duration / runs);
+    }
+
+    {
+        println!("\n⚡ Testing loading abi as json...");
+        let abi_content_c = CString::new(abi_content).unwrap();
+        match abieos.set_abi_json_c("eosio", abi_content_c.as_ref()) {
+            Ok(_) => {
+                println!("☑️ JSON Abi Loaded successfully")
+            }
+            Err(e) => {
+                println!("❌ Failed to load JSON Abi: {}", e)
+            }
+        };
+    }
 
 
     println!("\n⚡ Testing json to hex conversion with unordered json...");
@@ -221,22 +276,22 @@ fn main() {
         Err(_) => println!("❌ Failed to convert json to hex"),
     };
 
-    measure_call(&|| {
+    measure_call(&mut || {
         abieos.contract(NameLike::StringRef("eosio")).load_json_file("abis/eosio.abi").unwrap();
     }, "loading eosio abi from file (oneshot)");
 
-    measure_call(&|| {
+    measure_call(&mut || {
         let abi_content = read_to_string("abis/eosio.abi").unwrap();
         abieos.set_abi_json("eosio", abi_content).unwrap();
     }, "loading eosio abi from file (procedural)");
 
-    measure_call(&|| {
+    measure_call(&mut || {
         abieos.contract(NameLike::StringRef("eosio")).load_json_file("abis/transaction.abi.json").unwrap();
     }, "loading transaction abi from file");
 
     let json_data = read_to_string("abis/sample.json").unwrap();
 
-    measure_call(&|| {
+    measure_call(&mut || {
         abieos.contract(NameLike::StringRef("eosio")).json_to_hex("delegatebw", json_data.clone()).unwrap();
     }, "serializing sample action");
 }
