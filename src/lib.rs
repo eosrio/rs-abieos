@@ -7,9 +7,11 @@
 //! Abieos is a Rust wrapper for the abieos C library
 
 use std::ffi::{CStr, CString};
+use std::ops::Deref;
 use std::os::raw::c_char;
 
 mod abieos_error;
+
 pub use abieos_error::AbieosError;
 
 pub mod bindings {
@@ -55,7 +57,6 @@ pub struct AbieosContract {
 }
 
 impl AbieosContract {
-
     //! # Abieos Contract
     //!
     //!  AbieosContract is a contract reference that can be used to load ABIs and serialize/deserialize data
@@ -219,6 +220,17 @@ impl Abieos {
         }
     }
 
+    /// Convert a C-string into an u64 native name
+    pub fn c_string_to_name(&self, name: &CStr) -> u64 {
+        let ctx = self.ctx();
+        if name.to_bytes().len() > 13 {
+            return 0;
+        }
+        unsafe {
+            abieos_string_to_name(ctx, name.as_ptr())
+        }
+    }
+
     /// Convert an u64 native name into a string slice
     pub fn name_to_string(&self, name: u64) -> Result<&str, AbieosError> {
         let ctx = self.ctx();
@@ -231,12 +243,34 @@ impl Abieos {
         }
     }
 
+    /// Convert an u64 native name into a string slice
+    pub fn name_to_cstr(&self, name: u64) -> &CStr {
+        let ctx = self.ctx();
+        unsafe {
+            let c_buf = abieos_name_to_string(ctx, name);
+            CStr::from_ptr(c_buf)
+        }
+    }
+
     /// Load a contract ABI to memory (JSON format)
     pub fn set_abi_json(&self, contract: &str, abi_json: String) -> Result<bool, AbieosError> {
         match self.string_to_name(contract) {
             Ok(contract_u64) => unsafe {
                 let abi_content_cs = CString::new(abi_json).unwrap();
                 match abieos_set_abi(self.ctx(), contract_u64, abi_content_cs.as_ptr()) {
+                    1 => Ok(true),
+                    _ => Err(AbieosError::SetAbi(self.get_error()))
+                }
+            }
+            Err(_) => Err(AbieosError::StringToName)
+        }
+    }
+
+    /// Load a contract ABI to memory (JSON format as C-String)
+    pub fn set_abi_json_c(&self, contract: &str, abi_json: &CStr) -> Result<bool, AbieosError> {
+        match self.string_to_name(contract) {
+            Ok(contract_u64) => unsafe {
+                match abieos_set_abi(self.ctx(), contract_u64, abi_json.as_ptr()) {
                     1 => Ok(true),
                     _ => Err(AbieosError::SetAbi(self.get_error()))
                 }
@@ -326,6 +360,21 @@ impl Abieos {
         }
     }
 
+    /// Serialize JSON into binary (output as HEX)
+    pub fn json_to_hex_c(&self, account: &CStr, datatype: &CStr, json: &CStr) -> &CStr {
+        let ctx = self.ctx();
+        let account = self.c_string_to_name(account);
+        unsafe {
+            match abieos_json_to_bin_reorderable(ctx, account, datatype.as_ptr(), json.as_ptr()) {
+                1 => {
+                    let p = abieos_get_bin_hex(ctx);
+                    CStr::from_ptr(p)
+                }
+                _ => c""
+            }
+        }
+    }
+
     /// Serialize JSON into binary (output as HEX, u64 account name)
     pub fn json_to_hex_native(&self, account: u64, datatype: &str, json: String) -> Result<String, AbieosError> {
         let ctx = self.ctx();
@@ -377,6 +426,17 @@ impl Abieos {
             } else {
                 Ok(string_from_ptr(p))
             }
+        }
+    }
+
+
+    /// Deserialize HEX string into JSON
+    pub fn hex_to_json_c(&self, account: &CStr, datatype: &CStr, hex: &CStr) -> &CStr {
+        let ctx = self.ctx();
+        let account = self.c_string_to_name(account);
+        unsafe {
+            let p = abieos_hex_to_json(ctx, account, datatype.as_ptr(), hex.as_ptr());
+            CStr::from_ptr(p)
         }
     }
 
@@ -454,16 +514,16 @@ impl Abieos {
         }
     }
 
-        /// Get the type for a table (u64 names as input)
-        pub fn get_type_for_table_native(&self, contract: u64, table: u64) -> Result<String, AbieosError> {
-            let ctx = self.ctx();
-            let p = unsafe { abieos_get_type_for_table(ctx, contract, table) };
-            if p.is_null() {
-                Err(AbieosError::GetTypeForAction(self.get_error()))
-            } else {
-                Ok(string_from_ptr(p))
-            }
+    /// Get the type for a table (u64 names as input)
+    pub fn get_type_for_table_native(&self, contract: u64, table: u64) -> Result<String, AbieosError> {
+        let ctx = self.ctx();
+        let p = unsafe { abieos_get_type_for_table(ctx, contract, table) };
+        if p.is_null() {
+            Err(AbieosError::GetTypeForAction(self.get_error()))
+        } else {
+            Ok(string_from_ptr(p))
         }
+    }
 
     /// Get the type for an action result
     pub fn get_type_for_action_result(&self, contract: &str, action: &str) -> Result<String, AbieosError> {
@@ -520,11 +580,10 @@ impl Abieos {
 }
 
 pub mod abieos {
-    
     //! # Abieos
-    //! 
+    //!
     //!  Abieos is a Rust wrapper for the abieos C library
-    
+
     use crate::{abieos_context, abieos_create};
 
     pub fn create() -> *mut abieos_context {
