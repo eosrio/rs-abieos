@@ -25,10 +25,23 @@ fn string_from_ptr(ptr: *const c_char) -> String {
     }
 }
 
-/// Abieos is a Rust wrapper for the abieos C library
+/// Abieos is a Rust wrapper for the abieos C library.
+///
+/// # Thread Safety
+///
+/// `Abieos` implements `Send` but **not** `Sync`. The underlying C library stores
+/// mutable state (result buffers, error strings) in the context struct, so concurrent
+/// access from multiple threads is **not safe**.
+///
+/// Instead of wrapping in `Arc<Mutex<Abieos>>`, create one `Abieos` per thread/task:
+/// ```rust,no_run
+/// use rs_abieos::Abieos;
+/// // Each thread gets its own context — no contention
+/// let abieos = Abieos::new();
+/// ```
 pub struct Abieos {
-    pub context: Option<*mut abieos_context>,
-    pub is_destroyed: bool,
+    context: *mut abieos_context,
+    owns_context: bool,
 }
 
 unsafe impl Send for Abieos {}
@@ -168,29 +181,42 @@ impl Default for Abieos {
     }
 }
 
+impl Drop for Abieos {
+    fn drop(&mut self) {
+        if self.owns_context && !self.context.is_null() {
+            unsafe { abieos_destroy(self.context); }
+        }
+    }
+}
+
 impl Abieos {
-    /// Create a new Abieos instance
+    /// Create a new Abieos instance.
+    ///
+    /// The context is owned and will be automatically freed when dropped.
     pub fn new() -> Abieos {
         Abieos {
-            context: Some(abieos::create()),
-            is_destroyed: false,
+            context: abieos::create(),
+            owns_context: true,
         }
     }
 
-    /// Create a new Abieos instance from a context pointer
+    /// Create a non-owning Abieos wrapper from an existing context pointer.
+    ///
+    /// The caller retains ownership of the context — it will **not** be freed
+    /// when this wrapper is dropped. This is useful for creating temporary
+    /// references to a context managed elsewhere.
     pub fn from_context(context: *mut abieos_context) -> Abieos {
         Abieos {
-            context: Some(context),
-            is_destroyed: false,
+            context,
+            owns_context: false,
         }
     }
 
-
-    /// Destroy the Abieos instance
-    pub fn destroy(&self) {
-        unsafe {
-            abieos_destroy(self.context.unwrap());
-        }
+    /// Returns the raw context pointer.
+    ///
+    /// Useful for interop with code that needs direct FFI access.
+    pub fn as_ptr(&self) -> *mut abieos_context {
+        self.context
     }
 
     /// Get the last error message
@@ -204,7 +230,7 @@ impl Abieos {
 
     /// Get the context pointer
     fn ctx(&self) -> *mut abieos_context {
-        self.context.unwrap()
+        self.context
     }
 
     /// Convert a string slice into an u64 native name

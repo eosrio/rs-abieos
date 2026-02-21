@@ -6,16 +6,16 @@ mod tests {
     #[test]
     fn new() {
         let abieos: Abieos = Abieos::new();
-        assert_eq!(abieos.context.unwrap().is_null(), false, "new test failed");
-        abieos.destroy();
+        assert!(!abieos.as_ptr().is_null(), "new test failed");
     }
 
     #[test]
     fn new_from_context() {
-        let old_abieos: Abieos = Abieos::new();
-        let abieos: Abieos = Abieos::from_context(old_abieos.context.unwrap());
-        assert_eq!(abieos.context.unwrap().is_null(), false, "new_from_context test failed");
-        abieos.destroy();
+        let abieos: Abieos = Abieos::new();
+        // from_context creates a non-owning wrapper
+        let ref_abieos: Abieos = Abieos::from_context(abieos.as_ptr());
+        assert!(!ref_abieos.as_ptr().is_null(), "new_from_context test failed");
+        // both can be dropped safely — only abieos owns the context
     }
 
     #[test]
@@ -27,7 +27,6 @@ mod tests {
             Ok(n) => assert_eq!(n, true_name),
             Err(e) => panic!("string_to_name test failed: {}", e)
         }
-        abieos.destroy();
     }
 
     #[test]
@@ -36,7 +35,6 @@ mod tests {
         let name = abieos.name_to_string(EOSIO_TOKEN_U64).unwrap();
         let true_name = "eosio.token".to_string();
         assert_eq!(true_name, name, "reverse name test for eosio.token - expecting: {} got {}", true_name, name);
-        abieos.destroy();
     }
 
     #[test]
@@ -51,7 +49,6 @@ mod tests {
             Ok(x) => assert_eq!(x, true, "load abi test"),
             Err(e) => panic!("set_abi_json failed: {}", e)
         }
-        abieos.destroy();
     }
 
     #[test]
@@ -61,7 +58,6 @@ mod tests {
             Ok(x) => assert_eq!(x, true, "load abi test"),
             Err(e) => panic!("set_abi_hex failed: {}", e)
         }
-        abieos.destroy();
     }
 
     #[test]
@@ -79,7 +75,6 @@ mod tests {
             Err(e) => panic!("set_abi_bin failed: {}", e)
         }
 
-        abieos.destroy();
     }
 
 
@@ -96,7 +91,6 @@ mod tests {
         }"#;
         let bin = abieos.json_to_hex("eosio.token", "transfer", json).unwrap();
         assert_eq!(bin, HEX_ACTION_TRANSFER);
-        abieos.destroy();
     }
 
     #[test]
@@ -112,7 +106,6 @@ mod tests {
         }"#;
         let bin = abieos.json_to_bin("eosio.token", "transfer", json).unwrap();
         assert_eq!(bin, BIN_ACTION_TRANSFER);
-        abieos.destroy();
     }
 
     #[test]
@@ -123,7 +116,6 @@ mod tests {
         let json = abieos.hex_to_json("eosio.token", "transfer", bin).unwrap();
         let reverse_bin = abieos.json_to_hex("eosio.token", "transfer", &json).unwrap();
         assert_eq!(bin, reverse_bin);
-        abieos.destroy();
     }
 
     #[test]
@@ -133,7 +125,6 @@ mod tests {
         let action = "transfer";
         let type_name = abieos.get_type_for_action("eosio.token", action).unwrap();
         assert_eq!(type_name, "transfer");
-        abieos.destroy();
     }
 
     #[test]
@@ -143,7 +134,6 @@ mod tests {
         let action = "invalid";
         let type_name = abieos.get_type_for_action("eosio.token", action);
         assert_eq!(type_name.is_err(), true);
-        abieos.destroy();
     }
 
     #[test]
@@ -153,7 +143,6 @@ mod tests {
         let action = "transfer";
         let type_name = abieos.get_type_for_action("invalid", action);
         assert_eq!(type_name.is_err(), true);
-        abieos.destroy();
     }
 
     #[test]
@@ -163,7 +152,6 @@ mod tests {
         let table = "accounts";
         let type_name = abieos.get_type_for_table("eosio.token", table).unwrap();
         assert_eq!(type_name, "account");
-        abieos.destroy();
     }
 
     #[test]
@@ -173,7 +161,6 @@ mod tests {
         let table = "invalid";
         let type_name = abieos.get_type_for_table("eosio.token", table);
         assert_eq!(type_name.is_err(), true);
-        abieos.destroy();
     }
 
 
@@ -184,7 +171,6 @@ mod tests {
         let table = "accounts";
         let type_name = abieos.get_type_for_table("invalid", table);
         assert_eq!(type_name.is_err(), true);
-        abieos.destroy();
     }
 
     #[ignore]
@@ -217,7 +203,6 @@ mod tests {
         };
 
         assert_eq!(abi, abi_data, "abi_json_to_bin test failed");
-        abieos.destroy();
     }
 
     #[test]
@@ -236,7 +221,6 @@ mod tests {
             Err(_) => panic!("abi_bin_to_json test failed"),
         };
         assert!(json_abi.starts_with('{') && json_abi.ends_with('}'));
-        abieos.destroy();
     }
 
     // --- Default trait ---
@@ -244,8 +228,7 @@ mod tests {
     #[test]
     fn default_trait() {
         let abieos: Abieos = Abieos::default();
-        assert!(!abieos.context.unwrap().is_null(), "default trait should create a valid context");
-        abieos.destroy();
+        assert!(!abieos.as_ptr().is_null(), "default trait should create a valid context");
     }
 
     // --- bin_to_json ---
@@ -258,7 +241,6 @@ mod tests {
         // round-trip: bin -> json -> bin
         let bin = abieos.json_to_bin("eosio.token", "transfer", &json).unwrap();
         assert_eq!(bin, BIN_ACTION_TRANSFER);
-        abieos.destroy();
     }
 
     // --- delete_contract ---
@@ -276,7 +258,6 @@ mod tests {
         let type_result = abieos.get_type_for_action("eosio.token", "transfer");
         assert!(type_result.is_err(), "should fail after contract is deleted");
 
-        abieos.destroy();
     }
 
     #[test]
@@ -285,7 +266,6 @@ mod tests {
         // deleting a contract that was never loaded
         let result = abieos.delete_contract("eosio.token").unwrap();
         assert!(!result, "delete_contract should return false for non-existent contract");
-        abieos.destroy();
     }
 
     #[test]
@@ -296,7 +276,6 @@ mod tests {
 
         let result = abieos.delete_contract_native(token_u64).unwrap();
         assert!(result, "delete_contract_native should return true for existing contract");
-        abieos.destroy();
     }
 
     // --- Native (u64) variants ---
@@ -308,7 +287,6 @@ mod tests {
         let eosio_u64 = abieos.string_to_name("eosio").unwrap();
         let result = abieos.set_abi_json_native(eosio_u64, &abi_data).unwrap();
         assert!(result);
-        abieos.destroy();
     }
 
     #[test]
@@ -317,7 +295,6 @@ mod tests {
         let token_u64 = abieos.string_to_name("eosio.token").unwrap();
         let result = abieos.set_abi_hex_native(token_u64, EOSIO_TOKEN_HEX_ABI).unwrap();
         assert!(result);
-        abieos.destroy();
     }
 
     #[test]
@@ -327,7 +304,6 @@ mod tests {
         let abi_data = std::fs::read("abis/eosio.abi.bin").unwrap();
         let result = abieos.set_abi_bin_native(eosio_u64, &abi_data).unwrap();
         assert!(result);
-        abieos.destroy();
     }
 
     #[test]
@@ -338,7 +314,6 @@ mod tests {
         let json = r#"{"from":"alice","to":"bob","quantity":"1.0000 EOS","memo":"Hello!"}"#;
         let hex = abieos.json_to_hex_native(token_u64, "transfer", json).unwrap();
         assert_eq!(hex, HEX_ACTION_TRANSFER);
-        abieos.destroy();
     }
 
     #[test]
@@ -350,7 +325,6 @@ mod tests {
         // round-trip: hex -> json -> hex
         let hex = abieos.json_to_hex_native(token_u64, "transfer", &json).unwrap();
         assert_eq!(hex, HEX_ACTION_TRANSFER);
-        abieos.destroy();
     }
 
     // --- AbieosContract workflow ---
@@ -365,7 +339,6 @@ mod tests {
 
         let datatype = contract.get_type_for_action("transfer").unwrap();
         assert_eq!(datatype, "transfer");
-        abieos.destroy();
     }
 
     #[test]
@@ -374,7 +347,6 @@ mod tests {
         let mut contract = abieos.contract(rs_abieos::NameLike::String("eosio.token".to_string()));
         contract.load_abi(rs_abieos::AbiLike::Hex(EOSIO_TOKEN_HEX_ABI.to_string())).unwrap();
         assert!(contract.abiLoaded);
-        abieos.destroy();
     }
 
     #[test]
@@ -383,7 +355,6 @@ mod tests {
         let mut contract = abieos.contract(rs_abieos::NameLike::U64(EOSIO_TOKEN_U64));
         contract.load_abi(rs_abieos::AbiLike::Hex(EOSIO_TOKEN_HEX_ABI.to_string())).unwrap();
         assert!(contract.abiLoaded);
-        abieos.destroy();
     }
 
     #[test]
@@ -393,7 +364,6 @@ mod tests {
         assert!(!contract.abiLoaded);
         // i32(1) is a valid (if unusual) contract name
         let _ = contract;
-        abieos.destroy();
     }
 
     #[test]
@@ -403,7 +373,6 @@ mod tests {
         let mut contract = abieos.contract(rs_abieos::NameLike::StringRef(&name));
         contract.load_json_file("abis/eosio.abi").unwrap();
         assert!(contract.abiLoaded);
-        abieos.destroy();
     }
 
     #[test]
@@ -414,7 +383,6 @@ mod tests {
         let mut contract = abieos.contract(rs_abieos::NameLike::StringRef(&name));
         contract.load_abi(rs_abieos::AbiLike::Json(abi_data)).unwrap();
         assert!(contract.abiLoaded);
-        abieos.destroy();
     }
 
     #[test]
@@ -425,7 +393,6 @@ mod tests {
         let mut contract = abieos.contract(rs_abieos::NameLike::StringRef(&name));
         contract.load_abi(rs_abieos::AbiLike::Bin(abi_data)).unwrap();
         assert!(contract.abiLoaded);
-        abieos.destroy();
     }
 
     #[test]
@@ -438,7 +405,6 @@ mod tests {
         let json = r#"{"from":"alice","to":"bob","quantity":"1.0000 EOS","memo":"Hello!"}"#;
         let hex = contract.json_to_hex("transfer", json).unwrap();
         assert_eq!(hex, HEX_ACTION_TRANSFER);
-        abieos.destroy();
     }
 
     #[test]
@@ -452,7 +418,6 @@ mod tests {
         // round-trip verification
         let hex = contract.json_to_hex("transfer", &json).unwrap();
         assert_eq!(hex, HEX_ACTION_TRANSFER);
-        abieos.destroy();
     }
 
     #[test]
@@ -464,7 +429,6 @@ mod tests {
 
         let table_type = contract.get_type_for_table("accounts").unwrap();
         assert_eq!(table_type, "account");
-        abieos.destroy();
     }
 
     // --- C-string variants ---
@@ -475,7 +439,6 @@ mod tests {
         let name = std::ffi::CStr::from_bytes_with_nul(b"eosio.token\0").unwrap();
         let name_u64 = abieos.c_string_to_name(name);
         assert_eq!(name_u64, EOSIO_TOKEN_U64);
-        abieos.destroy();
     }
 
     #[test]
@@ -483,7 +446,6 @@ mod tests {
         let abieos: Abieos = Abieos::new();
         let cstr = abieos.name_to_cstr(EOSIO_TOKEN_U64);
         assert_eq!(cstr.to_str().unwrap(), "eosio.token");
-        abieos.destroy();
     }
 
     #[test]
@@ -491,7 +453,209 @@ mod tests {
         let abieos: Abieos = Abieos::new();
         let result = abieos.string_to_name("thisnamewaytolong");
         assert!(result.is_err(), "names longer than 13 chars should fail");
-        abieos.destroy();
+    }
+
+    // --- Drop safety ---
+
+    #[test]
+    fn drop_owned_context() {
+        // Owned context should be freed automatically without panicking
+        let _abieos = Abieos::new();
+        // if Drop is broken, this test will crash or leak (detected by sanitizers)
+    }
+
+    #[test]
+    fn drop_from_context_no_double_free() {
+        // from_context creates a non-owning wrapper — dropping both should not double-free
+        let abieos = Abieos::new();
+        let _ref_abieos = Abieos::from_context(abieos.as_ptr());
+        // _ref_abieos drops first (non-owning, no-op), then abieos drops (frees context)
+    }
+
+    // --- as_ptr ---
+
+    #[test]
+    fn as_ptr_returns_valid_pointer() {
+        let abieos = Abieos::new();
+        let ptr = abieos.as_ptr();
+        assert!(!ptr.is_null());
+    }
+
+    // --- Error traits ---
+
+    #[test]
+    fn error_display() {
+        use rs_abieos::AbieosError;
+        let err = AbieosError::NameTooLong;
+        let msg = format!("{}", err);
+        assert!(!msg.is_empty(), "Display should produce non-empty message");
+        assert!(msg.contains("too long"), "Display message should be descriptive");
+    }
+
+    #[test]
+    fn error_impl_std_error() {
+        use rs_abieos::AbieosError;
+        // Verify AbieosError implements std::error::Error
+        fn assert_error<E: std::error::Error>(_e: &E) {}
+        let err = AbieosError::Unknown;
+        assert_error(&err);
+    }
+
+    // --- Error paths ---
+
+    #[test]
+    fn json_to_bin_invalid_json() {
+        let abieos: Abieos = Abieos::new();
+        abieos.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI).unwrap();
+        let result = abieos.json_to_bin("eosio.token", "transfer", "not valid json");
+        assert!(result.is_err(), "invalid JSON should produce an error");
+    }
+
+    #[test]
+    fn json_to_hex_no_contract_loaded() {
+        let abieos: Abieos = Abieos::new();
+        // no ABI loaded — should fail
+        let result = abieos.json_to_hex("eosio.token", "transfer", "{}");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn hex_to_json_invalid_hex() {
+        let abieos: Abieos = Abieos::new();
+        abieos.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI).unwrap();
+        // "ZZZZ" is not valid hex
+        let result = abieos.hex_to_json("eosio.token", "transfer", "ZZZZ");
+        assert!(result.is_err(), "invalid hex should produce an error");
+    }
+
+    #[test]
+    fn set_abi_json_invalid() {
+        let abieos: Abieos = Abieos::new();
+        let result = abieos.set_abi_json("eosio", "not a valid abi json");
+        assert!(result.is_err(), "invalid ABI JSON should produce an error");
+    }
+
+    // --- Edge cases ---
+
+    #[test]
+    fn set_abi_overwrite() {
+        let abieos: Abieos = Abieos::new();
+        // Load ABI, then overwrite with same ABI — should succeed
+        abieos.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI).unwrap();
+        let result = abieos.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI).unwrap();
+        assert!(result, "overwriting an ABI should succeed");
+        // verify it still works after overwrite
+        let type_name = abieos.get_type_for_action("eosio.token", "transfer").unwrap();
+        assert_eq!(type_name, "transfer");
+    }
+
+    #[test]
+    fn multiple_contracts() {
+        let abieos: Abieos = Abieos::new();
+        // Load same ABI under two different contract names
+        abieos.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI).unwrap();
+        abieos.set_abi_hex("testcontract", EOSIO_TOKEN_HEX_ABI).unwrap();
+
+        // Both should work independently
+        let t1 = abieos.get_type_for_action("eosio.token", "transfer").unwrap();
+        let t2 = abieos.get_type_for_action("testcontract", "transfer").unwrap();
+        assert_eq!(t1, t2);
+
+        // Delete one, other should still work
+        abieos.delete_contract("eosio.token").unwrap();
+        assert!(abieos.get_type_for_action("eosio.token", "transfer").is_err());
+        assert!(abieos.get_type_for_action("testcontract", "transfer").is_ok());
+    }
+
+    #[test]
+    fn name_empty_string() {
+        let abieos: Abieos = Abieos::new();
+        // Empty string should be a valid (zero) name
+        let result = abieos.string_to_name("");
+        assert!(result.is_ok(), "empty name should be valid");
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn name_exact_13_chars() {
+        let abieos: Abieos = Abieos::new();
+        // Exactly 13 characters should be accepted
+        let result = abieos.string_to_name("1234512345123");
+        assert!(result.is_ok(), "13-char name should be valid");
+    }
+
+    // --- C-string variants ---
+
+    #[test]
+    fn json_to_hex_c_roundtrip() {
+        use std::ffi::CStr;
+        let abieos: Abieos = Abieos::new();
+        abieos.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI).unwrap();
+
+        let account = c"eosio.token";
+        let action = c"transfer";
+        let json = c"{\"from\":\"alice\",\"to\":\"bob\",\"quantity\":\"1.0000 EOS\",\"memo\":\"Hello!\"}";
+
+        let hex = abieos.json_to_hex_c(account, action, json);
+        assert!(!hex.is_empty(), "C-string serialization should produce output");
+
+        // roundtrip
+        let json_back = abieos.hex_to_json_c(account, action, hex);
+        assert!(!json_back.is_empty(), "C-string deserialization should produce output");
+    }
+
+    #[test]
+    fn set_abi_json_c() {
+        let abieos: Abieos = Abieos::new();
+        let abi_content = std::fs::read_to_string("abis/eosio.abi").unwrap();
+        let abi_c = std::ffi::CString::new(abi_content).unwrap();
+        let result = abieos.set_abi_json_c("eosio", &abi_c);
+        assert!(result.is_ok(), "set_abi_json_c should succeed");
+        assert!(result.unwrap(), "set_abi_json_c should return true");
+    }
+
+    // --- ABI conversion roundtrip ---
+
+    #[test]
+    fn abi_roundtrip_json_bin_json() {
+        let abieos: Abieos = Abieos::new();
+        let json_data = std::fs::read_to_string("abis/eosio.abi").unwrap();
+
+        // JSON → binary
+        let bin = abieos.abi_json_to_bin(&json_data).unwrap();
+        assert!(!bin.is_empty());
+
+        // binary → JSON
+        let json_back = abieos.abi_bin_to_json(&bin).unwrap();
+        assert!(!json_back.is_empty());
+
+        // JSON (from bin) → binary again — should produce same binary
+        let bin2 = abieos.abi_json_to_bin(&json_back).unwrap();
+        assert_eq!(bin, bin2, "roundtrip should produce identical binary");
+    }
+
+    // --- AbieosContract extra methods ---
+
+    #[test]
+    fn contract_get_type_for_action() {
+        let abieos: Abieos = Abieos::new();
+        let name = "eosio.token";
+        let mut contract = abieos.contract(rs_abieos::NameLike::StringRef(&name));
+        contract.load_abi(rs_abieos::AbiLike::Hex(EOSIO_TOKEN_HEX_ABI.to_string())).unwrap();
+
+        let type_name = contract.get_type_for_action("transfer").unwrap();
+        assert_eq!(type_name, "transfer");
+    }
+
+    #[test]
+    fn contract_get_type_for_action_invalid() {
+        let abieos: Abieos = Abieos::new();
+        let name = "eosio.token";
+        let mut contract = abieos.contract(rs_abieos::NameLike::StringRef(&name));
+        contract.load_abi(rs_abieos::AbiLike::Hex(EOSIO_TOKEN_HEX_ABI.to_string())).unwrap();
+
+        let result = contract.get_type_for_action("nonexistent");
+        assert!(result.is_err(), "non-existent action should fail");
     }
 }
 

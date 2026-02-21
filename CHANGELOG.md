@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-02-21
+
+### Added
+- `Drop` trait implementation — contexts are automatically freed when `Abieos` goes out of scope.
+- `as_ptr()` method to access the raw context pointer for FFI interop.
+- Thread-safety documentation on the `Abieos` struct explaining `Send` but not `Sync`.
+
+### Changed
+- **Breaking:** `context` field is now private. Use `as_ptr()` for raw pointer access.
+- **Breaking:** `from_context()` now creates a non-owning wrapper (won't free the context on drop).
+- **Breaking:** `destroy()` method removed — replaced by automatic `Drop`.
+
+### Removed
+- Removed `is_destroyed` field (was set but never checked).
+- Removed `Option` wrapper on context (was always `Some`).
+
 ## [0.2.0] - 2025-02-21
 
 ### Added

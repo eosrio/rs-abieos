@@ -2,8 +2,14 @@
 
 [crates-badge]: https://img.shields.io/crates/v/rs_abieos.svg
 [crates-url]: https://crates.io/crates/rs_abieos
+[ci-badge]: https://github.com/eosrio/rs-abieos/actions/workflows/ci.yml/badge.svg
+[ci-url]: https://github.com/eosrio/rs-abieos/actions/workflows/ci.yml
+[coveralls-badge]: https://coveralls.io/repos/github/eosrio/rs-abieos/badge.svg?branch=master
+[coveralls-url]: https://coveralls.io/github/eosrio/rs-abieos?branch=master
 
 [![Crates.io][crates-badge]][crates-url]
+[![CI][ci-badge]][ci-url]
+[![Coverage Status][coveralls-badge]][coveralls-url]
 
 #### [API Documentation](https://docs.rs/rs_abieos/)
 
