@@ -11,6 +11,7 @@ pub enum AbieosError {
     FileRead,
     SetAbi(String),
     JsonToHex(String),
+    JsonToBin(String),
     HexToJson(String),
     GetTypeForAction(String),
     GetTypeForTable(String),
@@ -27,8 +28,9 @@ impl Display for AbieosError {
             AbieosError::StringToName => write!(f, "Failed to convert string to name"),
             AbieosError::NameToString => write!(f, "Failed to convert name to string"),
             AbieosError::SetAbi(e) => write!(f, "Failed to set ABI: {}", e),
-            AbieosError::JsonToHex(e) => write!(f, "Failed to serialize JSON: {}", e),
-            AbieosError::HexToJson(e) => write!(f, "Failed to deserialize Binary: {}", e),
+            AbieosError::JsonToHex(e) => write!(f, "Failed to serialize JSON to hex: {}", e),
+            AbieosError::JsonToBin(e) => write!(f, "Failed to serialize JSON to binary: {}", e),
+            AbieosError::HexToJson(e) => write!(f, "Failed to deserialize hex to JSON: {}", e),
             AbieosError::GetTypeForAction(e) => write!(f, "Failed to get type for action: {}", e),
             AbieosError::GetTypeForTable(e) => write!(f, "Failed to get type for table: {}", e),
             AbieosError::GetTypeForActionResult(e) => write!(f, "Failed to get type for action result: {}", e),
@@ -42,3 +44,4 @@ impl Display for AbieosError {
     }
 }
 
+impl std::error::Error for AbieosError {}

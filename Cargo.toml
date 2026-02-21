@@ -1,6 +1,6 @@
 [package]
 name = "rs_abieos"
-version = "0.1.5"
+version = "0.2.0"
 edition = "2021"
 build = "build.rs"
 authors = ["Igor Lins e Silva"]
@@ -19,5 +19,5 @@ doc = false
 
 [build-dependencies]
 cc = { version = "1.0.90", features = ["parallel"] }
-bindgen = "0.69.4"
+bindgen = "0.72.1"
 sys-info = "0.9.1"

@@ -22,7 +22,7 @@ fn main() {
 
     // converting an abi from json to binary
     println!("\n⚡ Testing conversion from abi json to binary...");
-    let abi_bin: Vec<u8> = abieos.abi_json_to_bin(abi_content.clone()).unwrap();
+    let abi_bin: Vec<u8> = abieos.abi_json_to_bin(&abi_content).unwrap();
     if !abi_bin.is_empty() {
         println!("☑️ ABI Converted: (size: {} bytes)", abi_bin.len());
 
@@ -34,12 +34,12 @@ fn main() {
 
     // loading an abi as binary
     println!("\n⚡ Testing loading abi as binary...");
-    let loading_status = abieos.set_abi_bin("eosio", abi_bin.clone()).unwrap();
+    let loading_status = abieos.set_abi_bin("eosio", &abi_bin).unwrap();
     println!("☑️ Binary Load: {}", loading_status);
 
     // converting an abi from binary to json
     println!("\n⚡ Testing conversion from abi binary to json...");
-    let abi_json = abieos.abi_bin_to_json(abi_bin).unwrap();
+    let abi_json = abieos.abi_bin_to_json(&abi_bin).unwrap();
     if !abi_json.is_empty() {
         // check if the json is valid json without any external libraries
         let is_valid_json = abi_json.starts_with('{') && abi_json.ends_with('}');
@@ -52,7 +52,7 @@ fn main() {
 
     // loading an abi hex
     println!("\n⚡ Testing loading abi as hex...");
-    let loading_status = abieos.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI.to_string()).unwrap();
+    let loading_status = abieos.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI).unwrap();
     if loading_status {
         println!("☑️ HEX Abi Loaded successfully");
     } else {
@@ -119,7 +119,7 @@ fn main() {
             "quantity":"1.0000 EOS",
             "memo":"Hello!"
         }"#;
-    let bin = match abieos.json_to_hex("eosio.token", "transfer", json.to_string()) {
+    let bin = match abieos.json_to_hex("eosio.token", "transfer", json) {
         Ok(x) => {
             println!("json_to_hex: {}", x.clone());
             x
@@ -139,11 +139,11 @@ fn main() {
         let action = "transfer";
         let mut last_json = String::new();
         for _ in 0..runs {
-            let json_out = abieos.hex_to_json(account, action, bin.clone()).unwrap();
-            let bin_out = abieos.json_to_hex(account, action, json_out.to_string()).unwrap();
+            let json_out = abieos.hex_to_json(account, action, &bin).unwrap();
+            let bin_out = abieos.json_to_hex(account, action, &json_out).unwrap();
             if !last_json.is_empty() {
                 assert_eq!(json_out, last_json);
-                assert_eq!(bin.clone(), bin_out.to_string());
+                assert_eq!(bin, bin_out);
             }
             last_json = json_out.to_string();
         }
@@ -202,7 +202,7 @@ fn main() {
     let result = abieos.json_to_hex(
         "eosio",
         "delegatebw",
-        json_sample,
+        &json_sample,
     ).unwrap_or_else(|e| {
         println!("❌ Failed to convert json to hex: {}", e);
         String::new()
@@ -212,7 +212,7 @@ fn main() {
     let result2 = abieos.json_to_hex(
         "eosio",
         "delegatebw",
-        json_sample_unordered,
+        &json_sample_unordered,
     ).unwrap_or_else(|e| {
         println!("❌ Failed to convert json to hex: {}", e);
         String::new()
@@ -232,7 +232,7 @@ fn main() {
     let ds_result = abieos.hex_to_json(
         "eosio",
         "delegatebw",
-        result,
+        &result,
     ).unwrap();
     println!("{}", ds_result);
 
@@ -266,7 +266,7 @@ fn main() {
         .unwrap()
         .json_to_hex(
             "transaction",
-            trx_json.to_string(),
+            trx_json,
         ) {
         Ok(x) => {
             println!("json_to_hex: {}", x.clone());
@@ -282,7 +282,7 @@ fn main() {
 
     measure_call(&mut || {
         let abi_content = read_to_string("abis/eosio.abi").unwrap();
-        abieos.set_abi_json("eosio", abi_content).unwrap();
+        abieos.set_abi_json("eosio", &abi_content).unwrap();
     }, "loading eosio abi from file (procedural)");
 
     measure_call(&mut || {
@@ -292,6 +292,6 @@ fn main() {
     let json_data = read_to_string("abis/sample.json").unwrap();
 
     measure_call(&mut || {
-        abieos.contract(NameLike::StringRef("eosio")).json_to_hex("delegatebw", json_data.clone()).unwrap();
+        abieos.contract(NameLike::StringRef("eosio")).json_to_hex("delegatebw", &json_data).unwrap();
     }, "serializing sample action");
 }

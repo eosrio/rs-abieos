@@ -13,8 +13,6 @@ converting between native and string names, and more.
 
 This wrapper is currently based on the vanilla version of the [AntelopeIO/abieos](https://github.com/AntelopeIO/abieos)
 
-_Test cases are being completely rewritten in Rust. They can be found in the `tests` directory._
-
 ## Requirements
 
 - Linux
@@ -92,7 +90,7 @@ fn main() {
   let mut eosio_contract = abieos.contract(eosio);
 
   // load the abi using the contract instance
-  // load_abi method takes an AbiLike enum which can be either a Json (String), Hex (String) or Bin (Vec<u8>)
+  // load_abi method takes an AbiLike enum which can be either Json (String), Hex (String) or Bin (Vec<u8>)
   let load_status = eosio_contract.load_abi(AbiLike::Json(abi_content));
 
   // check if the abi was loaded successfully
@@ -120,7 +118,7 @@ fn main() {
   };
 
   // serialize the action data
-  let serialized_action = eosio_contract.json_to_hex(datatype.as_str(), action_data.to_string());
+  let serialized_action = eosio_contract.json_to_hex(datatype.as_str(), action_data);
 
   let hex_action = match serialized_action {
     Ok(hex_data) => {
@@ -134,7 +132,7 @@ fn main() {
   };
 
   // Let's deserialize the serialized action data
-  let json_action = eosio_contract.hex_to_json(datatype.as_str(), hex_action);
+  let json_action = eosio_contract.hex_to_json(datatype.as_str(), &hex_action);
 
   match json_action {
     Ok(json_data) => println!("Deserialized action data: {}", json_data),
@@ -146,7 +144,7 @@ fn main() {
 
 `bin-src/main.rs` contains a more detailed executable example that demonstrates multiple use cases for the library.
 
-Please refer to the library's [API documentation](https://docs.rs/rs_abieos/0.1.3/rs_abieos) for more detailed information on each function.
+Please refer to the library's [API documentation](https://docs.rs/rs_abieos/) for more detailed information on each function.
 
 ### Library Development
 

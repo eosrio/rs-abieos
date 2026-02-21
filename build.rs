@@ -23,19 +23,7 @@ fn build_linux() {
         .write_to_file("src/bindings.rs")
         .expect("Couldn't write bindings!");
 
-    // Build fpconv library
-    cc::Build::new()
-        .includes(&[
-            "lib/abieos/include",
-        ])
-        .files(&[
-            "lib/abieos/include/eosio/fpconv.c",
-        ])
-        .static_flag(true)
-        .out_dir("target/lib/fpconv")
-        .compile("fpconv");
-
-    // Build the native library with rust
+    // Build the native library
     cc::Build::new()
         .cpp(true)
         .includes(&[
@@ -51,7 +39,6 @@ fn build_linux() {
         .flag("-Wextra")
         .flag("-Wno-unused-parameter")
         .flag("-std=gnu++17")
-        .static_flag(true)
         .cpp_link_stdlib("stdc++")
         .out_dir("target/lib/abieos")
         .compile("abieos");
