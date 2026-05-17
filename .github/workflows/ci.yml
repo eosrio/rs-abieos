@@ -44,6 +44,82 @@ jobs:
       - name: Run tests
         run: cargo test
 
+  test-macos:
+    name: Test (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # Xcode command-line tools (preinstalled on macos-latest) provide both
+      # the C++ toolchain and libclang for bindgen; no extra setup needed.
+      - name: Build
+        run: cargo build --release
+
+      - name: Run tests
+        run: cargo test
+
+  test-windows:
+    name: Test (Windows, GNU)
+    runs-on: windows-latest
+    env:
+      CARGO_BUILD_TARGET: x86_64-pc-windows-gnu
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up MinGW-w64 and LLVM
+        shell: pwsh
+        run: |
+          # abieos relies on libstdc++/libc++ semantics (e.g. std::string_view
+          # iterators) that MSVC's STL does not provide, so it is built with
+          # MinGW-w64 g++ against the x86_64-pc-windows-gnu target. windows-latest
+          # ships MSYS2 (MinGW-w64, MSVCRT) at C:\msys64\mingw64 and LLVM at
+          # C:\Program Files\LLVM (libclang, required by bindgen).
+          "C:\msys64\mingw64\bin"     | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Install Rust toolchain (gnu target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-gnu-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-gnu-cargo-
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Run tests
+        run: cargo test
+
   coverage:
     name: Coverage
     runs-on: ubuntu-latest

@@ -37,6 +37,39 @@ mod tests {
         assert_eq!(true_name, name, "reverse name test for eosio.token - expecting: {} got {}", true_name, name);
     }
 
+    // The abieos C entry points are wrapped in `handle_exceptions`, which
+    // returns null when the context is null (it short-circuits before any
+    // dereference). These tests deterministically exercise the FFI
+    // null-pointer guards added in 0.4.0 — the methods must return `Err`,
+    // never invoke `CStr::from_ptr` on null (which would be UB).
+    #[test]
+    fn name_to_string_null_context_is_err() {
+        let abieos = Abieos::from_context(std::ptr::null_mut());
+        assert!(abieos.name_to_string(EOSIO_TOKEN_U64).is_err());
+    }
+
+    #[test]
+    fn name_to_cstr_null_context_is_err() {
+        let abieos = Abieos::from_context(std::ptr::null_mut());
+        assert!(abieos.name_to_cstr(EOSIO_TOKEN_U64).is_err());
+    }
+
+    #[test]
+    fn json_to_hex_c_null_context_is_err() {
+        let abieos = Abieos::from_context(std::ptr::null_mut());
+        assert!(abieos
+            .json_to_hex_c(c"eosio.token", c"transfer", c"{}")
+            .is_err());
+    }
+
+    #[test]
+    fn hex_to_json_c_null_context_is_err() {
+        let abieos = Abieos::from_context(std::ptr::null_mut());
+        assert!(abieos
+            .hex_to_json_c(c"eosio.token", c"transfer", c"00")
+            .is_err());
+    }
+
     #[test]
     fn set_abi_json() {
         let abi_data = match std::fs::read_to_string("abis/eosio.abi") {
@@ -444,7 +477,7 @@ mod tests {
     #[test]
     fn name_to_cstr() {
         let abieos: Abieos = Abieos::new();
-        let cstr = abieos.name_to_cstr(EOSIO_TOKEN_U64);
+        let cstr = abieos.name_to_cstr(EOSIO_TOKEN_U64).unwrap();
         assert_eq!(cstr.to_str().unwrap(), "eosio.token");
     }
 
@@ -588,7 +621,6 @@ mod tests {
 
     #[test]
     fn json_to_hex_c_roundtrip() {
-        use std::ffi::CStr;
         let abieos: Abieos = Abieos::new();
         abieos.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI).unwrap();
 
@@ -596,12 +628,42 @@ mod tests {
         let action = c"transfer";
         let json = c"{\"from\":\"alice\",\"to\":\"bob\",\"quantity\":\"1.0000 EOS\",\"memo\":\"Hello!\"}";
 
-        let hex = abieos.json_to_hex_c(account, action, json);
-        assert!(!hex.is_empty(), "C-string serialization should produce output");
+        let hex = abieos.json_to_hex_c(account, action, json).unwrap();
+        assert!(!hex.as_bytes().is_empty(), "C-string serialization should produce output");
 
         // roundtrip
-        let json_back = abieos.hex_to_json_c(account, action, hex);
-        assert!(!json_back.is_empty(), "C-string deserialization should produce output");
+        let json_back = abieos.hex_to_json_c(account, action, hex.as_c_str()).unwrap();
+        assert!(
+            !json_back.as_bytes().is_empty(),
+            "C-string deserialization should produce output"
+        );
+    }
+
+    /// Regression test for the buffer-aliasing soundness fix.
+    ///
+    /// The `_c` methods used to return a `&CStr` borrowing the context's
+    /// single reused result buffer, so a value held across a later call was
+    /// silently overwritten (a use-after-overwrite reachable from safe code —
+    /// it panicked the example binary). Now they return an owned `CString`.
+    #[test]
+    fn c_string_results_survive_subsequent_calls() {
+        let abieos: Abieos = Abieos::new();
+        abieos.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI).unwrap();
+
+        let account = c"eosio.token";
+        let action = c"transfer";
+        let json = c"{\"from\":\"alice\",\"to\":\"bob\",\"quantity\":\"1.0000 EOS\",\"memo\":\"Hello!\"}";
+
+        let hex = abieos.json_to_hex_c(account, action, json).unwrap();
+
+        // Hold `json1` across another call that reuses the context buffer.
+        let json1 = abieos.hex_to_json_c(account, action, hex.as_c_str()).unwrap();
+        let hex1 = abieos.json_to_hex_c(account, action, json1.as_c_str()).unwrap();
+        let json2 = abieos.hex_to_json_c(account, action, hex1.as_c_str()).unwrap();
+
+        // Pre-fix, `json1` would have been clobbered to the hex string here.
+        assert_eq!(json1, json2, "deserialized JSON must be stable across calls");
+        assert_eq!(hex, hex1, "re-serialization must reproduce the original hex");
     }
 
     #[test]
