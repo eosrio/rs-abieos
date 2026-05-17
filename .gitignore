@@ -2,4 +2,5 @@
 /Cargo.lock
 build
 .idea
+.claude/
 !target/doc
