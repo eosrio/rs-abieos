@@ -1,4 +1,4 @@
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::fs::read_to_string;
 use std::time::Instant;
 use rs_abieos::{Abieos, NameLike};
@@ -63,7 +63,7 @@ fn main() {
     println!("\n⚡ Testing name conversion...");
     let original_name = "alice";
     let mut native_name: u64 = 0;
-    let mut name_as_string: &str = "";
+    let mut name_as_string = String::new();
 
     // measure the time taken to convert the name
     measure_call(&mut || {
@@ -80,15 +80,15 @@ fn main() {
     println!("\n⚡ Testing name conversion (C-String)...");
     let original_name = c"eosio";
     let mut native_name: u64 = 0;
-    let mut name_as_string: &CStr = c"";
+    let mut name_as_string = CString::default();
 
     // measure the time taken to convert the name
     measure_call(&mut || {
         native_name = abieos.c_string_to_name(original_name);
-        name_as_string = abieos.name_to_cstr(native_name);
+        name_as_string = abieos.name_to_cstr(native_name).unwrap();
     }, "name conversion (C-string)");
 
-    if name_as_string.eq(original_name) {
+    if name_as_string.as_c_str() == original_name {
         println!("☑️ {:?} => {native_name} => {:?}", original_name, name_as_string);
     } else {
         println!("❌ Name conversion failed");
@@ -159,17 +159,18 @@ fn main() {
         let start = Instant::now();
         let account = c"eosio.token";
         let action = c"transfer";
-        let mut last_json = c"";
-        let bin_c = CString::new(bin).unwrap();
-        let mut bin: &CStr = bin_c.as_c_str();
+        let mut last_json: Option<CString> = None;
+        let mut bin: CString = CString::new(bin).unwrap();
         for _ in 0..runs {
-            let json_out = abieos.hex_to_json_c(account, action, bin);
-            let bin_out = abieos.json_to_hex_c(account, action, json_out);
-            if !last_json.is_empty() {
-                assert_eq!(json_out, last_json);
+            let json_out = abieos.hex_to_json_c(account, action, bin.as_c_str()).unwrap();
+            let bin_out = abieos
+                .json_to_hex_c(account, action, json_out.as_c_str())
+                .unwrap();
+            if let Some(prev) = &last_json {
+                assert_eq!(&json_out, prev);
                 assert_eq!(bin, bin_out);
             }
-            last_json = json_out;
+            last_json = Some(json_out);
             bin = bin_out;
         }
         let duration = start.elapsed();

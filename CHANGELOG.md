@@ -5,17 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-05-17
 
 ### Added
 - **Windows support** via the `x86_64-pc-windows-gnu` target (MinGW-w64 g++).
   Build and full test suite verified on Windows.
-- macOS/iOS: the build no longer panics and links `libc++` automatically.
-  Expected to work but not yet verified in CI.
+- **macOS/iOS support** — the build no longer panics and links `libc++`
+  automatically.
 - Windows setup instructions in the README (MinGW-w64 + LLVM/`libclang`).
-- Windows (GNU) job added to CI.
+- Windows (GNU) and macOS jobs added to CI.
+- Regression test (`c_string_results_survive_subsequent_calls`) covering the
+  buffer-aliasing soundness fix below.
+
+### Fixed
+- **Soundness (breaking):** `name_to_string`, `name_to_cstr`, `json_to_hex_c`
+  and `hex_to_json_c` returned a borrow into the context's single reused result
+  buffer. A value held across any later call into the same context was silently
+  overwritten — a use-after-overwrite (and, since the buffer can reallocate, a
+  use-after-free) reachable from safe code. It panicked the example binary on
+  the C-string round-trip. These methods now return **owned** values.
+- **Soundness:** `hex_to_json_c`, `json_to_hex_c`, `name_to_string` and
+  `name_to_cstr` called `CStr::from_ptr` on FFI return values without a null
+  check. The abieos C entry points are wrapped in `handle_exceptions`, which
+  returns null on a null context or a C++ exception (e.g. `bad_alloc`), so
+  this was undefined behavior reachable from safe code. All are now
+  null-checked and return `Err`.
+- `build.rs` now writes the generated bindings to `OUT_DIR` instead of
+  `src/bindings.rs`. The previous behavior modified a tracked source file on
+  every build, which fails `cargo package` / `cargo publish` verification and
+  caused the committed bindings to churn per platform. The committed
+  `src/bindings.rs` is retained solely as the docs.rs fallback.
 
 ### Changed
+- **Breaking:** `name_to_string` now returns `Result<String, AbieosError>`
+  (was `Result<&str, AbieosError>`).
+- **Breaking:** `name_to_cstr` now returns `Result<CString, AbieosError>`
+  (was `&CStr`; owned + null-checked).
+- **Breaking:** `json_to_hex_c` and `hex_to_json_c` now return
+  `Result<CString, AbieosError>` (was `&CStr`; they previously signalled
+  errors by returning an empty/invalid `CStr`).
 - `build.rs` is now cross-platform and target-aware. It selects the C++
   standard library per target (`libstdc++` on Linux/MinGW, `libc++` on macOS)
   using Cargo's `CARGO_CFG_TARGET_*` env vars instead of the host-only
@@ -23,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `git submodule update` in the build script is now non-fatal when the
   vendored `lib/abieos` sources are already present (works without `git` on
   `PATH`, e.g. packaged crates).
+- Raised the declared `cc` build-dependency floor `1.0.90` → `1.2.62` to match
+  the tested version (`cc` and `bindgen` are both already at latest stable).
 
 ### Removed
 - `sys-info` build dependency (replaced by Cargo-provided target env vars).

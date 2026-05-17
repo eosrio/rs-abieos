@@ -42,20 +42,32 @@ fn ensure_submodule() {
     }
 }
 
-/// Generate the FFI bindings for the abieos C API.
-fn generate_bindings() {
+/// Generate the FFI bindings for the abieos C API into `OUT_DIR`.
+///
+/// Bindings are written to `OUT_DIR`, never the source tree: `cargo package`
+/// / `cargo publish` verification forbids build scripts from modifying tracked
+/// files, and writing into `src/` also caused the committed `bindings.rs` to
+/// churn per platform. `lib.rs` always `include!`s `$OUT_DIR/bindings.rs`.
+fn generate_bindings(out_bindings: &Path) {
     bindgen::builder()
         .header("lib/abieos/src/abieos.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .expect("Unable to generate bindings")
-        .write_to_file("src/bindings.rs")
+        .write_to_file(out_bindings)
         .expect("Couldn't write bindings!");
 }
 
 fn main() {
+    let out_dir = env::var_os("OUT_DIR").expect("OUT_DIR not set by cargo");
+    let out_bindings = Path::new(&out_dir).join("bindings.rs");
+
     if env::var("DOCS_RS").is_ok() {
-        // Skip the native build on docs.rs (no submodule / compiler there).
+        // docs.rs has no C++ compiler or submodule: skip the native build and
+        // bindgen, falling back to the committed canonical bindings so that
+        // `lib.rs` (which always includes `$OUT_DIR/bindings.rs`) still builds.
+        std::fs::copy("src/bindings.rs", &out_bindings)
+            .expect("Couldn't stage committed bindings for docs.rs");
         return;
     }
 
@@ -65,7 +77,7 @@ fn main() {
     println!("cargo:rerun-if-changed=lib/abieos/src/crypto.cpp");
 
     ensure_submodule();
-    generate_bindings();
+    generate_bindings(&out_bindings);
 
     // These are set by Cargo for build scripts and are correct even when
     // cross-compiling — unlike the host-only `sys-info` crate this used to use.

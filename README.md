@@ -23,9 +23,8 @@ This wrapper is currently based on the vanilla version of the [AntelopeIO/abieos
 
 `rs_abieos` builds the vendored [`abieos`](https://github.com/AntelopeIO/abieos) C++
 library from source, so a C++ toolchain and `libclang` (used by `bindgen`) are
-required. **Linux** and **Windows** (`x86_64-pc-windows-gnu`) are verified in CI.
-**macOS** is expected to work (Apple Clang + `libc++`) but is not yet covered by
-CI.
+required. **Linux**, **Windows** (`x86_64-pc-windows-gnu`) and **macOS**
+(Apple Clang + `libc++`) are all verified in CI.
 
 ### Linux
 
