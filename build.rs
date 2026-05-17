@@ -71,31 +71,13 @@ fn main() {
         return;
     }
 
-    println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=lib/abieos/src/abieos.cpp");
-    println!("cargo:rerun-if-changed=lib/abieos/src/abi.cpp");
-    println!("cargo:rerun-if-changed=lib/abieos/src/crypto.cpp");
-
-    ensure_submodule();
-    generate_bindings(&out_bindings);
-
-    // These are set by Cargo for build scripts and are correct even when
-    // cross-compiling — unlike the host-only `sys-info` crate this used to use.
+    // Set by Cargo for build scripts; correct even when cross-compiling
+    // (unlike the host-only `sys-info` crate this used to use). Resolve the
+    // target *first* so an unsupported target fails with an actionable
+    // message before bindgen/libclang or the submodule can raise a more
+    // confusing error (e.g. "Unable to find libclang").
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
-
-    let mut build = cc::Build::new();
-    build
-        .cpp(true)
-        .includes([
-            "lib/abieos/external/rapidjson/include",
-            "lib/abieos/include",
-        ])
-        .files([
-            "lib/abieos/src/abieos.cpp",
-            "lib/abieos/src/abi.cpp",
-            "lib/abieos/src/crypto.cpp",
-        ]);
 
     // The vendored abieos C++ relies on GCC/Clang extensions (`__int128`,
     // `__attribute__`, `__builtin_unreachable`) *and* on libstdc++/libc++
@@ -117,6 +99,27 @@ fn main() {
              \"Windows\" section for details.\n"
         );
     }
+
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=lib/abieos/src/abieos.cpp");
+    println!("cargo:rerun-if-changed=lib/abieos/src/abi.cpp");
+    println!("cargo:rerun-if-changed=lib/abieos/src/crypto.cpp");
+
+    ensure_submodule();
+    generate_bindings(&out_bindings);
+
+    let mut build = cc::Build::new();
+    build
+        .cpp(true)
+        .includes([
+            "lib/abieos/external/rapidjson/include",
+            "lib/abieos/include",
+        ])
+        .files([
+            "lib/abieos/src/abieos.cpp",
+            "lib/abieos/src/abi.cpp",
+            "lib/abieos/src/crypto.cpp",
+        ]);
 
     // GCC/Clang-style flags. `-std=gnu++17` is required (abieos uses GNU
     // extensions); the warning flags are best-effort.
