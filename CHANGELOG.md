@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Windows support** via the `x86_64-pc-windows-gnu` target (MinGW-w64 g++).
+  Build and full test suite verified on Windows.
+- macOS/iOS: the build no longer panics and links `libc++` automatically.
+  Expected to work but not yet verified in CI.
+- Windows setup instructions in the README (MinGW-w64 + LLVM/`libclang`).
+- Windows (GNU) job added to CI.
+
+### Changed
+- `build.rs` is now cross-platform and target-aware. It selects the C++
+  standard library per target (`libstdc++` on Linux/MinGW, `libc++` on macOS)
+  using Cargo's `CARGO_CFG_TARGET_*` env vars instead of the host-only
+  `sys-info` crate, and no longer panics on non-Linux hosts.
+- `git submodule update` in the build script is now non-fatal when the
+  vendored `lib/abieos` sources are already present (works without `git` on
+  `PATH`, e.g. packaged crates).
+
+### Removed
+- `sys-info` build dependency (replaced by Cargo-provided target env vars).
+- Dead `cargo:rustc-link-search=target/lib/build` directive (a no-op bug; `cc`
+  emits the correct search path itself).
+
+### Notes
+- The `x86_64-pc-windows-msvc` target is **not supported**: the vendored
+  abieos C++ depends on libstdc++/libc++ semantics MSVC's STL lacks. The build
+  fails fast with guidance to use the GNU target.
+
 ## [0.3.0] - 2025-02-21
 
 ### Added

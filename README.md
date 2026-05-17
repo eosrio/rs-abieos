@@ -21,33 +21,95 @@ This wrapper is currently based on the vanilla version of the [AntelopeIO/abieos
 
 ## Requirements
 
-- Linux
-- C++ toolchain. You can use alternative compilers to build the library.
-  We recommend using Clang 18 to build the `abieos` C++ library.
+`rs_abieos` builds the vendored [`abieos`](https://github.com/AntelopeIO/abieos) C++
+library from source, so a C++ toolchain and `libclang` (used by `bindgen`) are
+required. **Linux** and **Windows** (`x86_64-pc-windows-gnu`) are verified in CI.
+**macOS** is expected to work (Apple Clang + `libc++`) but is not yet covered by
+CI.
 
-Make sure you have Clang 18 installed on your system:
+### Linux
 
-```bash
-wget https://apt.llvm.org/llvm.sh
-chmod +x llvm.sh
-sudo ./llvm.sh 18
-```
+- A C++ toolchain. We recommend Clang 18 to build the `abieos` C++ library:
+
+  ```bash
+  wget https://apt.llvm.org/llvm.sh
+  chmod +x llvm.sh
+  sudo ./llvm.sh 18
+  ```
+
+### macOS
+
+- Xcode command-line tools (`xcode-select --install`) provide Clang and
+  `libclang`. No extra configuration is needed — the build links `libc++`
+  automatically.
+
+### Windows
+
+abieos depends on libstdc++/libc++ standard-library semantics (for example,
+`std::string_view`'s iterator being a raw `const char*`) that MSVC's STL does
+**not** provide. The `*-pc-windows-msvc` target is therefore unsupported — the
+build fails fast with an explanatory message. Use the GNU (MinGW-w64) target
+instead:
+
+1. Install **MinGW-w64 g++** (MSVCRT runtime, to match the Rust `-gnu` target).
+   [WinLibs](https://winlibs.com/) works well:
+
+   ```powershell
+   winget install --id BrechtSanders.WinLibs.POSIX.MSVCRT -e --scope user
+   ```
+
+   MSYS2 (`pacman -S mingw-w64-x86_64-gcc`) also works. Ensure the toolchain's
+   `bin` directory is on `PATH` — it provides `g++` at build time and
+   `libstdc++-6.dll` / `libgcc_s_seh-1.dll` / `libwinpthread-1.dll` at run time.
+
+2. Install **LLVM** for `libclang` (required by `bindgen`):
+
+   ```powershell
+   winget install --id LLVM.LLVM -e
+   ```
+
+   Then point `bindgen` at it (or add `…\LLVM\bin` to `PATH`):
+
+   ```powershell
+   $env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
+   ```
+
+3. Add the Rust GNU target:
+
+   ```powershell
+   rustup target add x86_64-pc-windows-gnu
+   ```
 
 ## Setup Instructions
 
-To use `rs_abieos` in your Rust project, you need to add it as a dependency in your `Cargo.toml` file:
+To use `rs_abieos` in your Rust project, add it as a dependency in your
+`Cargo.toml` file:
 
 ```bash
 cargo add rs_abieos
 ```
 
-Then, run the following command to download and compile the `rs_abieos` library:
+Then download and compile the library:
 
 ```bash
+# Linux / macOS
 cargo build
-# or if you have another default compiler, use clang-18 to build the library
+# or, if your default compiler differs, build abieos with clang-18:
 CXX=clang++-18 CC=clang-18 cargo build
 ```
+
+```powershell
+# Windows (from the prerequisites above)
+cargo build --target x86_64-pc-windows-gnu
+```
+
+> On Windows, pass `--target x86_64-pc-windows-gnu` to every `cargo`
+> invocation (`build`, `test`, `run`), or set it once in `.cargo/config.toml`:
+>
+> ```toml
+> [build]
+> target = "x86_64-pc-windows-gnu"
+> ```
 
 ## Quick Usage Example
 
@@ -159,7 +221,13 @@ Please refer to the library's [API documentation](https://docs.rs/rs_abieos/) fo
 To run the test cases, use the following command:
 
 ```bash
+# Linux / macOS
 cargo test
 # or
 CXX=clang++-18 CC=clang-18 cargo test
+```
+
+```powershell
+# Windows
+cargo test --target x86_64-pc-windows-gnu
 ```

@@ -18,6 +18,5 @@ path = "bin-src/main.rs"
 doc = false
 
 [build-dependencies]
-cc = { version = "1.0.90", features = ["parallel"] }
+cc = { version = "1.2.62", features = ["parallel"] }
 bindgen = "0.72.1"
-sys-info = "0.9.1"
