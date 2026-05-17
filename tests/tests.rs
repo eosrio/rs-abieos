@@ -37,6 +37,39 @@ mod tests {
         assert_eq!(true_name, name, "reverse name test for eosio.token - expecting: {} got {}", true_name, name);
     }
 
+    // The abieos C entry points are wrapped in `handle_exceptions`, which
+    // returns null when the context is null (it short-circuits before any
+    // dereference). These tests deterministically exercise the FFI
+    // null-pointer guards added in 0.4.0 — the methods must return `Err`,
+    // never invoke `CStr::from_ptr` on null (which would be UB).
+    #[test]
+    fn name_to_string_null_context_is_err() {
+        let abieos = Abieos::from_context(std::ptr::null_mut());
+        assert!(abieos.name_to_string(EOSIO_TOKEN_U64).is_err());
+    }
+
+    #[test]
+    fn name_to_cstr_null_context_is_err() {
+        let abieos = Abieos::from_context(std::ptr::null_mut());
+        assert!(abieos.name_to_cstr(EOSIO_TOKEN_U64).is_err());
+    }
+
+    #[test]
+    fn json_to_hex_c_null_context_is_err() {
+        let abieos = Abieos::from_context(std::ptr::null_mut());
+        assert!(abieos
+            .json_to_hex_c(c"eosio.token", c"transfer", c"{}")
+            .is_err());
+    }
+
+    #[test]
+    fn hex_to_json_c_null_context_is_err() {
+        let abieos = Abieos::from_context(std::ptr::null_mut());
+        assert!(abieos
+            .hex_to_json_c(c"eosio.token", c"transfer", c"00")
+            .is_err());
+    }
+
     #[test]
     fn set_abi_json() {
         let abi_data = match std::fs::read_to_string("abis/eosio.abi") {
