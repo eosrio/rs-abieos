@@ -33,9 +33,15 @@ impl Display for AbieosError {
             AbieosError::HexToJson(e) => write!(f, "Failed to deserialize hex to JSON: {}", e),
             AbieosError::GetTypeForAction(e) => write!(f, "Failed to get type for action: {}", e),
             AbieosError::GetTypeForTable(e) => write!(f, "Failed to get type for table: {}", e),
-            AbieosError::GetTypeForActionResult(e) => write!(f, "Failed to get type for action result: {}", e),
-            AbieosError::AbiBinToJson(e) => write!(f, "Failed to convert ABI binary to JSON: {}", e),
-            AbieosError::AbiJsonToBin(e) => write!(f, "Failed to convert ABI JSON to binary: {}", e),
+            AbieosError::GetTypeForActionResult(e) => {
+                write!(f, "Failed to get type for action result: {}", e)
+            }
+            AbieosError::AbiBinToJson(e) => {
+                write!(f, "Failed to convert ABI binary to JSON: {}", e)
+            }
+            AbieosError::AbiJsonToBin(e) => {
+                write!(f, "Failed to convert ABI JSON to binary: {}", e)
+            }
             AbieosError::AbiNotLoaded => write!(f, "ABI not loaded in this contract"),
             AbieosError::FileRead => write!(f, "Failed to read file"),
             AbieosError::BinToJson(e) => write!(f, "Failed to convert binary to JSON: {}", e),

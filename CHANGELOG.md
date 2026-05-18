@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Initial dual-backend architecture with the existing vendored C++ backend as
+  the default and an opt-in pure-Rust backend via
+  `--no-default-features --features rust-backend`.
+- Pure-Rust compatibility implementation for the `abieos.h` surface used by
+  the safe Rust API: contexts, name conversion, ABI JSON/bin/hex loading, ABI
+  JSON/bin conversion, action/table lookups, JSON/bin/hex data conversion, and
+  contract deletion.
+- Rust-backend parity coverage for fixed arrays, variants, and bitset encoding.
+- Rust-backend parity coverage for C++ built-in contract scalar fixtures,
+  including integer boundaries, varints, time types, names, bytes, checksums,
+  symbols, assets, optionals, fixed arrays, and `extended_asset`.
+- Rust-backend parity coverage for C++ binary-extension fixtures, nested arrays,
+  long bitsets, fixed struct arrays, variants, and transaction serialization
+  through an ABI loaded at contract `0`.
+- Test-only C++ oracle bindings exposed as `rs_abieos::cpp_oracle` when
+  `cpp-oracle` is enabled, plus a differential smoke test for names and
+  built-in scalar conversions.
+- CI gates for the pure-Rust backend on Linux, macOS, and Windows MSVC, plus a
+  Linux differential job that runs the Rust backend against the C++ oracle.
+
+### Changed
+- `build.rs` skips bindgen and C++ compilation when `cpp-backend` is not
+  enabled, allowing the Rust backend to compile on MSVC without `libclang` or a
+  C++ toolchain.
+- When `rust-backend` and `cpp-oracle` are both enabled, the safe Rust API uses
+  the Rust backend while the C++ implementation remains available only through
+  the oracle module.
+- Struct base resolution in the Rust backend is order-independent, matching the
+  C++ behavior for ABIs where derived structs sort before their base structs.
+- Rust backend contract `0` now uses a loaded ABI when present and falls back to
+  the built-in type namespace only when no ABI is loaded there.
+
 ## [0.4.0] - 2026-05-17
 
 ### Added

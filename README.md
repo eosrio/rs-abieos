@@ -88,6 +88,53 @@ To use `rs_abieos` in your Rust project, add it as a dependency in your
 cargo add rs_abieos
 ```
 
+### Backend Features
+
+`rs_abieos` now has a staged dual-backend layout:
+
+- `cpp-backend` (default): builds and uses the vendored C++ `abieos` library.
+- `rust-backend`: uses the pure-Rust compatibility backend and does not require
+  a C++ compiler, `libclang`, or `bindgen` at build time.
+- `cpp-oracle`: builds the vendored C++ backend as an oracle for differential
+  parity tests. When `rust-backend` is also enabled, the safe Rust API uses the
+  Rust backend and exposes the oracle bindings as `rs_abieos::cpp_oracle`.
+
+Recommended application usage:
+
+- Use the default features when you want the current C++ implementation and
+  have a supported C++ toolchain.
+- Use `default-features = false, features = ["rust-backend"]` when you want a
+  pure-Rust build or need `*-pc-windows-msvc` support.
+- Use `features = ["rust-backend", "cpp-oracle"]` only for parity checks on
+  hosts that can build the vendored C++ backend.
+
+Recommended CI checks:
+
+```bash
+cargo check
+cargo check --no-default-features --features rust-backend
+cargo check --no-default-features --features "rust-backend cpp-oracle"
+```
+
+The pure-Rust backend keeps the existing safe Rust API:
+
+```bash
+cargo test --no-default-features --features rust-backend
+```
+
+On a host with the C++ backend toolchain installed, run the differential oracle
+tests with:
+
+```bash
+cargo test --no-default-features --features "rust-backend cpp-oracle"
+```
+
+Unsupported combinations are intentionally explicit:
+
+- `cargo check --no-default-features` fails because no backend is selected.
+- On `*-pc-windows-msvc`, the default C++ backend fails fast; use
+  `cargo check --no-default-features --features rust-backend`.
+
 Then download and compile the library:
 
 ```bash
@@ -229,4 +276,11 @@ CXX=clang++-18 CC=clang-18 cargo test
 ```powershell
 # Windows
 cargo test --target x86_64-pc-windows-gnu
+```
+
+Pure-Rust backend and oracle migration gates:
+
+```bash
+cargo test --no-default-features --features rust-backend
+cargo test --no-default-features --features "rust-backend cpp-oracle"
 ```

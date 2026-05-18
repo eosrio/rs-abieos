@@ -59,6 +59,11 @@ fn generate_bindings(out_bindings: &Path) {
 }
 
 fn main() {
+    if env::var("CARGO_FEATURE_CPP_BACKEND").is_err() {
+        println!("cargo:rerun-if-changed=build.rs");
+        return;
+    }
+
     let out_dir = env::var_os("OUT_DIR").expect("OUT_DIR not set by cargo");
     let out_bindings = Path::new(&out_dir).join("bindings.rs");
 
