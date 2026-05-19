@@ -12,7 +12,7 @@ pub type abieos_context = abieos_context_s;
 #[allow(non_camel_case_types)]
 pub struct abieos_context_s {
     last_error: CString,
-    result_str: CString,
+    result_str: Vec<u8>,
     result_bin: Vec<u8>,
     contracts: BTreeMap<u64, Abi>,
 }
@@ -20,8 +20,8 @@ pub struct abieos_context_s {
 impl Default for abieos_context_s {
     fn default() -> Self {
         Self {
-            last_error: cstring_lossy(""),
-            result_str: cstring_lossy(""),
+            last_error: CString::default(),
+            result_str: Vec::new(),
             result_bin: Vec::new(),
             contracts: BTreeMap::new(),
         }
@@ -30,6 +30,23 @@ impl Default for abieos_context_s {
 
 fn cstring_lossy(s: &str) -> CString {
     CString::new(s.replace('\0', "")).expect("interior nul removed")
+}
+
+unsafe fn cstr_arg_borrowed<'a>(ptr: *const c_char) -> Result<&'a str, String> {
+    if ptr.is_null() {
+        Ok("")
+    } else {
+        CStr::from_ptr(ptr)
+            .to_str()
+            .map_err(|e| format!("Invalid UTF-8 in C-string: {}", e))
+    }
+}
+
+fn set_result_str(ctx: &mut abieos_context_s, s: &str) -> *const c_char {
+    ctx.result_str.clear();
+    ctx.result_str.extend_from_slice(s.as_bytes());
+    ctx.result_str.push(0);
+    ctx.result_str.as_ptr().cast()
 }
 
 unsafe fn cstr_arg(ptr: *const c_char) -> String {
@@ -71,23 +88,23 @@ unsafe fn with_ctx<T>(
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Json {
+enum Json<'a> {
     Null,
     Bool(bool),
-    String(String),
-    Array(Vec<Json>),
-    Object(Vec<(String, Json)>),
+    String(std::borrow::Cow<'a, str>),
+    Array(Vec<Json<'a>>),
+    Object(Vec<(std::borrow::Cow<'a, str>, Json<'a>)>),
 }
 
-impl Json {
-    fn as_object(&self) -> Result<&[(String, Json)], String> {
+impl<'a> Json<'a> {
+    fn as_object(&self) -> Result<&[(std::borrow::Cow<'a, str>, Json<'a>)], String> {
         match self {
             Json::Object(fields) => Ok(fields),
             _ => Err("expected object".into()),
         }
     }
 
-    fn as_array(&self) -> Result<&[Json], String> {
+    fn as_array(&self) -> Result<&[Json<'a>], String> {
         match self {
             Json::Array(values) => Ok(values),
             _ => Err("expected array".into()),
@@ -96,7 +113,7 @@ impl Json {
 
     fn as_str_like(&self) -> Result<&str, String> {
         match self {
-            Json::String(s) => Ok(s),
+            Json::String(s) => Ok(s.as_ref()),
             _ => Err("expected string".into()),
         }
     }
@@ -117,7 +134,7 @@ impl<'a> JsonParser<'a> {
         }
     }
 
-    fn parse(mut self) -> Result<Json, String> {
+    fn parse(mut self) -> Result<Json<'a>, String> {
         let value = self.parse_value()?;
         self.skip_ws();
         if self.pos != self.src.len() {
@@ -153,7 +170,7 @@ impl<'a> JsonParser<'a> {
         }
     }
 
-    fn parse_value(&mut self) -> Result<Json, String> {
+    fn parse_value(&mut self) -> Result<Json<'a>, String> {
         self.skip_ws();
         if self.depth > 128 {
             return Err("recursion limit reached".into());
@@ -188,17 +205,51 @@ impl<'a> JsonParser<'a> {
         }
     }
 
-    fn parse_string(&mut self) -> Result<String, String> {
+    fn parse_string(&mut self) -> Result<std::borrow::Cow<'a, str>, String> {
         self.expect(b'"', "Expected string")?;
-        let mut out = Vec::new();
+        let start = self.pos;
+        let mut has_escape = false;
         while let Some(b) = self.peek() {
             self.pos += 1;
             match b {
                 b'"' => {
-                    return String::from_utf8(out).map_err(|_| "Invalid encoding in string".into())
+                    let s = std::str::from_utf8(&self.src[start..self.pos - 1])
+                        .map_err(|_| "Invalid encoding in string".to_string())?;
+                    if has_escape {
+                        return self.parse_string_with_escapes(start);
+                    } else {
+                        return Ok(std::borrow::Cow::Borrowed(s));
+                    }
                 }
                 b'\\' => {
-                    let esc = self.bump()?;
+                    has_escape = true;
+                    self.pos += 1;
+                }
+                0..=31 => return Err("Invalid encoding in string".into()),
+                _ => {}
+            }
+        }
+        Err("Missing a closing quotation mark in string".into())
+    }
+
+    fn parse_string_with_escapes(&self, start: usize) -> Result<std::borrow::Cow<'a, str>, String> {
+        let mut out = Vec::new();
+        let mut pos = start;
+        while pos < self.src.len() {
+            let b = self.src[pos];
+            pos += 1;
+            match b {
+                b'"' => {
+                    return String::from_utf8(out)
+                        .map(std::borrow::Cow::Owned)
+                        .map_err(|_| "Invalid encoding in string".into())
+                }
+                b'\\' => {
+                    if pos >= self.src.len() {
+                        return Err("Invalid escape character in string".into());
+                    }
+                    let esc = self.src[pos];
+                    pos += 1;
                     match esc {
                         b'"' => out.push(b'"'),
                         b'\\' => out.push(b'\\'),
@@ -209,17 +260,21 @@ impl<'a> JsonParser<'a> {
                         b'r' => out.push(b'\r'),
                         b't' => out.push(b'\t'),
                         b'u' => {
+                            if pos + 4 > self.src.len() {
+                                return Err("Invalid escape character in string".into());
+                            }
                             let mut cp = 0u32;
                             for _ in 0..4 {
                                 cp = (cp << 4)
-                                    | match self.bump()? {
-                                        b'0'..=b'9' => (self.src[self.pos - 1] - b'0') as u32,
-                                        b'a'..=b'f' => (self.src[self.pos - 1] - b'a' + 10) as u32,
-                                        b'A'..=b'F' => (self.src[self.pos - 1] - b'A' + 10) as u32,
+                                    | match self.src[pos] {
+                                        b'0'..=b'9' => (self.src[pos] - b'0') as u32,
+                                        b'a'..=b'f' => (self.src[pos] - b'a' + 10) as u32,
+                                        b'A'..=b'F' => (self.src[pos] - b'A' + 10) as u32,
                                         _ => {
                                             return Err("Invalid escape character in string".into())
                                         }
                                     };
+                                pos += 1;
                             }
                             let mut buf = [0u8; 4];
                             let ch = char::from_u32(cp).unwrap_or('?');
@@ -235,7 +290,7 @@ impl<'a> JsonParser<'a> {
         Err("Missing a closing quotation mark in string".into())
     }
 
-    fn parse_number(&mut self) -> Result<String, String> {
+    fn parse_number(&mut self) -> Result<std::borrow::Cow<'a, str>, String> {
         let start = self.pos;
         if self.peek() == Some(b'-') {
             self.pos += 1;
@@ -259,11 +314,11 @@ impl<'a> JsonParser<'a> {
             }
         }
         std::str::from_utf8(&self.src[start..self.pos])
-            .map(str::to_owned)
+            .map(std::borrow::Cow::Borrowed)
             .map_err(|_| "json parse error".into())
     }
 
-    fn parse_array(&mut self) -> Result<Json, String> {
+    fn parse_array(&mut self) -> Result<Json<'a>, String> {
         self.expect(b'[', "Expected [")?;
         self.depth += 1;
         let mut values = Vec::new();
@@ -287,7 +342,7 @@ impl<'a> JsonParser<'a> {
         }
     }
 
-    fn parse_object(&mut self) -> Result<Json, String> {
+    fn parse_object(&mut self) -> Result<Json<'a>, String> {
         self.expect(b'{', "Expected {")?;
         self.depth += 1;
         let mut fields = Vec::new();
@@ -316,7 +371,7 @@ impl<'a> JsonParser<'a> {
     }
 }
 
-fn parse_json(src: &str) -> Result<Json, String> {
+fn parse_json(src: &str) -> Result<Json<'_>, String> {
     JsonParser::new(src).parse()
 }
 
@@ -347,6 +402,14 @@ fn hex_encode(bytes: &[u8]) -> String {
     out
 }
 
+fn hex_encode_into(bytes: &[u8], out: &mut Vec<u8>) {
+    out.reserve(bytes.len() * 2);
+    for b in bytes {
+        out.push(HEX[(b >> 4) as usize]);
+        out.push(HEX[(b & 0x0f) as usize]);
+    }
+}
+
 fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
     fn nibble(b: u8) -> Option<u8> {
         match b {
@@ -362,23 +425,20 @@ fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
     }
     let mut out = Vec::with_capacity(bytes.len() / 2);
     for pair in bytes.chunks_exact(2) {
-        let h = nibble(pair[0]).ok_or_else(|| "expected hex string".to_string())?;
-        let l = nibble(pair[1]).ok_or_else(|| "expected hex string".to_string())?;
+        let h = nibble(pair[0]).ok_or_else(|| "Expected string containing hex".to_string())?;
+        let l = nibble(pair[1]).ok_or_else(|| "Expected string containing hex".to_string())?;
         out.push((h << 4) | l);
     }
     Ok(out)
 }
 
-struct Writer {
-    data: Vec<u8>,
+struct Writer<'a> {
+    data: &'a mut Vec<u8>,
 }
 
-impl Writer {
-    fn new() -> Self {
-        Self { data: Vec::new() }
-    }
-    fn bytes(self) -> Vec<u8> {
-        self.data
+impl<'a> Writer<'a> {
+    fn new(data: &'a mut Vec<u8>) -> Self {
+        Self { data }
     }
     fn push(&mut self, b: u8) {
         self.data.push(b);
@@ -520,8 +580,7 @@ fn char_to_name_digit(c: u8) -> u64 {
     }
 }
 
-fn string_to_name_value(s: &str) -> u64 {
-    let bytes = s.as_bytes();
+fn bytes_to_name_value(bytes: &[u8]) -> u64 {
     let mut name = 0u64;
     let mut i = 0usize;
     while i < bytes.len() && i < 12 {
@@ -532,6 +591,25 @@ fn string_to_name_value(s: &str) -> u64 {
         name |= char_to_name_digit(bytes[i]) & 0x0f;
     }
     name
+}
+
+fn string_to_name_value(s: &str) -> u64 {
+    bytes_to_name_value(s.as_bytes())
+}
+
+fn name_to_string_value_into(name: u64, out: &mut Vec<u8>) {
+    const CHARMAP: &[u8; 32] = b".12345abcdefghijklmnopqrstuvwxyz";
+    let mut tmp = name;
+    let mut chars = [b'.'; 13];
+    for i in 0..=12 {
+        let mask = if i == 0 { 0x0f } else { 0x1f };
+        chars[12 - i] = CHARMAP[(tmp & mask) as usize];
+        tmp >>= if i == 0 { 4 } else { 5 };
+    }
+    let last = chars.iter().rposition(|c| *c != b'.');
+    if let Some(i) = last {
+        out.extend_from_slice(&chars[..=i]);
+    }
 }
 
 fn name_to_string_value(name: u64) -> String {
@@ -614,11 +692,11 @@ struct AbiDef {
     action_results: Vec<ActionResultDef>,
 }
 
-fn obj_field<'a>(obj: &'a [(String, Json)], name: &str) -> Option<&'a Json> {
-    obj.iter().find(|(k, _)| k == name).map(|(_, v)| v)
+fn obj_field<'a, 'b>(obj: &'a [(std::borrow::Cow<'b, str>, Json<'b>)], name: &str) -> Option<&'a Json<'b>> {
+    obj.iter().find(|(k, _)| k.as_ref() == name).map(|(_, v)| v)
 }
 
-fn json_string(obj: &[(String, Json)], name: &str) -> Result<String, String> {
+fn json_string(obj: &[(std::borrow::Cow<'_, str>, Json<'_>)], name: &str) -> Result<String, String> {
     Ok(obj_field(obj, name)
         .map(Json::as_str_like)
         .transpose()?
@@ -626,14 +704,14 @@ fn json_string(obj: &[(String, Json)], name: &str) -> Result<String, String> {
         .to_string())
 }
 
-fn json_name(obj: &[(String, Json)], name: &str) -> Result<u64, String> {
+fn json_name(obj: &[(std::borrow::Cow<'_, str>, Json<'_>)], name: &str) -> Result<u64, String> {
     Ok(string_to_name_value(&json_string(obj, name)?))
 }
 
 fn json_vec<T>(
-    obj: &[(String, Json)],
+    obj: &[(std::borrow::Cow<'_, str>, Json<'_>)],
     name: &str,
-    mut f: impl FnMut(&Json) -> Result<T, String>,
+    mut f: impl FnMut(&Json<'_>) -> Result<T, String>,
 ) -> Result<Vec<T>, String> {
     let Some(value) = obj_field(obj, name) else {
         return Ok(Vec::new());
@@ -641,7 +719,7 @@ fn json_vec<T>(
     value.as_array()?.iter().map(&mut f).collect()
 }
 
-fn strings_from_json(value: &Json) -> Result<Vec<String>, String> {
+fn strings_from_json(value: &Json<'_>) -> Result<Vec<String>, String> {
     value
         .as_array()?
         .iter()
@@ -655,7 +733,7 @@ impl AbiDef {
         Self::from_json(&root)
     }
 
-    fn from_json(root: &Json) -> Result<Self, String> {
+    fn from_json(root: &Json<'_>) -> Result<Self, String> {
         let obj = root.as_object()?;
         let mut def = AbiDef {
             version: json_string(obj, "version")?,
@@ -817,9 +895,10 @@ impl AbiDef {
     }
 
     fn to_bin(&self) -> Vec<u8> {
-        let mut w = Writer::new();
+        let mut buf = Vec::new();
+        let mut w = Writer::new(&mut buf);
         self.write_bin(&mut w);
-        w.bytes()
+        buf
     }
 
     fn read_bin(r: &mut Reader) -> Result<Self, String> {
@@ -1139,8 +1218,8 @@ enum TypeKind {
     Extension(String),
     Array(String),
     FixedArray(String, usize),
-    Struct(Vec<FieldDef>),
-    Variant(Vec<String>),
+    Struct(std::sync::Arc<[FieldDef]>),
+    Variant(std::sync::Arc<[String]>),
 }
 
 #[derive(Clone)]
@@ -1178,7 +1257,7 @@ impl Abi {
                     name: "contract".into(),
                     type_name: "name".into(),
                 },
-            ]),
+            ].into()),
         );
     }
 
@@ -1224,7 +1303,7 @@ impl Abi {
             }
             if abi
                 .types
-                .insert(s.name.clone(), TypeKind::Struct(Vec::new()))
+                .insert(s.name.clone(), TypeKind::Struct(Vec::new().into()))
                 .is_some()
             {
                 return Err("Redefined type".into());
@@ -1236,7 +1315,7 @@ impl Abi {
             }
             if abi
                 .types
-                .insert(v.name.clone(), TypeKind::Variant(v.types.clone()))
+                .insert(v.name.clone(), TypeKind::Variant(v.types.clone().into()))
                 .is_some()
             {
                 return Err("Redefined type".into());
@@ -1250,7 +1329,7 @@ impl Abi {
         let names: Vec<String> = structs.keys().cloned().collect();
         for name in names {
             let fields = abi.resolve_struct_fields(&structs, &name, 0)?;
-            abi.types.insert(name, TypeKind::Struct(fields));
+            abi.types.insert(name, TypeKind::Struct(fields.into()));
         }
         for s in &def.structs {
             for f in &s.fields {
@@ -1287,7 +1366,7 @@ impl Abi {
                 fields.extend(self.resolve_struct_fields(structs, &s.base, depth + 1)?);
             } else {
                 match self.ensure_type(&s.base, depth + 1)? {
-                    TypeKind::Struct(base_fields) => fields.extend(base_fields),
+                    TypeKind::Struct(base_fields) => fields.extend(base_fields.iter().cloned()),
                     _ => return Err("Base not a struct".into()),
                 }
             }
@@ -1368,9 +1447,11 @@ impl Abi {
         type_name: &str,
         json: &str,
         reorderable: bool,
-    ) -> Result<Vec<u8>, String> {
+        out: &mut Vec<u8>,
+    ) -> Result<(), String> {
         let value = parse_json(json)?;
-        let mut w = Writer::new();
+        out.clear();
+        let mut w = Writer::new(out);
         let mut skipped_extension = false;
         self.write_json_value(
             type_name,
@@ -1380,7 +1461,7 @@ impl Abi {
             reorderable,
             &mut skipped_extension,
         )?;
-        Ok(w.bytes())
+        Ok(())
     }
 
     fn write_json_value(
@@ -1493,7 +1574,10 @@ impl Abi {
         let mut seen = BTreeSet::new();
         for (idx, field) in fields.iter().enumerate() {
             let found = if reorderable {
-                obj.iter().find(|(k, _)| k == &field.name)
+                // Use reverse search to match C++ std::map last-wins behavior
+                // for duplicate keys: RapidJSON feeds keys into std::map which
+                // overwrites previous entries, effectively keeping the last value.
+                obj.iter().rev().find(|(k, _)| k == &field.name)
             } else {
                 obj.get(idx).filter(|(k, _)| k == &field.name)
             };
@@ -1522,7 +1606,11 @@ impl Abi {
                 &mut skipped,
             )?;
         }
-        if obj.iter().any(|(k, _)| !seen.contains(k.as_str())) {
+        // In reorderable mode, C++ does not check for extra fields: the
+        // jvalue_to_bin path iterates over struct fields and looks each up in
+        // the std::map, silently ignoring any extra keys.  Only the ordered
+        // (streaming SAX) path rejects unexpected fields.
+        if !reorderable && obj.iter().any(|(k, _)| !seen.contains(k.as_ref())) {
             return Err("Unexpected field".into());
         }
         Ok(())
@@ -1668,8 +1756,82 @@ fn parse_num<T: std::str::FromStr>(value: &Json, msg: &str) -> Result<T, String>
     value.as_str_like()?.parse().map_err(|_| msg.into())
 }
 
+fn parse_int_strict(s: &str) -> Result<i128, String> {
+    if s.is_empty() {
+        return Err("Expected integer".into());
+    }
+    let mut bytes = s.bytes();
+    let mut negative = false;
+    let mut first = true;
+    let mut uval = 0u128;
+    let mut found_digit = false;
+    
+    for b in bytes {
+        if first {
+            first = false;
+            if b == b'-' {
+                negative = true;
+                continue;
+            }
+        }
+        if b >= b'0' && b <= b'9' {
+            let digit = (b - b'0') as u128;
+            uval = uval.checked_mul(10)
+                .and_then(|v| v.checked_add(digit))
+                .ok_or_else(|| "number is out of range".to_string())?;
+            found_digit = true;
+        } else {
+            return Err("Expected integer".into());
+        }
+    }
+    if !found_digit {
+        return Err("Expected integer".into());
+    }
+    
+    if negative {
+        const MIN_ABS: u128 = 170141183460469231731687303715884105728;
+        if uval > MIN_ABS {
+            return Err("number is out of range".into());
+        }
+        if uval == MIN_ABS {
+            Ok(i128::MIN)
+        } else {
+            Ok(-(uval as i128))
+        }
+    } else {
+        if uval > i128::MAX as u128 {
+            return Err("number is out of range".into());
+        }
+        Ok(uval as i128)
+    }
+}
+
+fn parse_uint_strict(s: &str) -> Result<u128, String> {
+    if s.is_empty() {
+        return Err("Expected integer".into());
+    }
+    let mut uval = 0u128;
+    let mut found_digit = false;
+    for b in s.bytes() {
+        if b >= b'0' && b <= b'9' {
+            let digit = (b - b'0') as u128;
+            uval = uval.checked_mul(10)
+                .and_then(|v| v.checked_add(digit))
+                .ok_or_else(|| "number is out of range".to_string())?;
+            found_digit = true;
+        } else {
+            return Err("Expected integer".into());
+        }
+    }
+    if !found_digit {
+        return Err("Expected integer".into());
+    }
+    Ok(uval)
+}
+
 fn parse_int_range(value: &Json, min: i128, max: i128) -> Result<i128, String> {
-    let v: i128 = parse_num(value, "Expected integer")?;
+    let s = value.as_str_like()?;
+    let v = parse_int_strict(s)?;
     if v < min || v > max {
         Err("number is out of range".into())
     } else {
@@ -1678,7 +1840,8 @@ fn parse_int_range(value: &Json, min: i128, max: i128) -> Result<i128, String> {
 }
 
 fn parse_uint_range(value: &Json, max: u128) -> Result<u128, String> {
-    let v: u128 = parse_num(value, "Expected integer")?;
+    let s = value.as_str_like()?;
+    let v = parse_uint_strict(s)?;
     if v > max {
         Err("number is out of range".into())
     } else {
@@ -1745,11 +1908,11 @@ fn write_builtin(type_name: &str, value: &Json, w: &mut Writer) -> Result<(), St
             Ok(())
         }
         "float" | "float32" => {
-            w.write(&parse_num::<f32>(value, "Expected number")?.to_le_bytes());
+            w.write(&parse_num::<f32>(value, "Expected number or boolean")?.to_le_bytes());
             Ok(())
         }
         "double" | "float64" => {
-            w.write(&parse_num::<f64>(value, "Expected number")?.to_le_bytes());
+            w.write(&parse_num::<f64>(value, "Expected number or boolean")?.to_le_bytes());
             Ok(())
         }
         "float128" => {
@@ -1796,15 +1959,15 @@ fn write_builtin(type_name: &str, value: &Json, w: &mut Writer) -> Result<(), St
             Ok(())
         }
         "symbol_code" => {
-            w.u64(string_to_symbol_code(value.as_str_like()?)?);
+            w.u64(string_to_symbol_code(value.as_str_like()?).map_err(|_| "Expected symbol code".to_string())?);
             Ok(())
         }
         "symbol" => {
-            w.u64(string_to_symbol(value.as_str_like()?)?);
+            w.u64(string_to_symbol(value.as_str_like()?).map_err(|_| "Expected symbol".to_string())?);
             Ok(())
         }
         "asset" => {
-            let (amount, symbol) = string_to_asset(value.as_str_like()?)?;
+            let (amount, symbol) = string_to_asset(value.as_str_like()?).map_err(|_| "Expected symbol code".to_string())?;
             w.i64(amount);
             w.u64(symbol);
             Ok(())
@@ -1970,12 +2133,27 @@ fn read_builtin(type_name: &str, r: &mut Reader, out: &mut String) -> Result<(),
 }
 
 fn string_to_symbol_code(s: &str) -> Result<u64, String> {
-    if s.is_empty() || s.len() > 7 || !s.bytes().all(|b| b.is_ascii_uppercase()) {
+    let bytes = s.as_bytes();
+    let mut pos = 0;
+    let end = bytes.len();
+    
+    while pos < end && bytes[pos] == b' ' {
+        pos += 1;
+    }
+    let mut code = 0u64;
+    let mut i = 0usize;
+    while pos < end && bytes[pos] >= b'A' && bytes[pos] <= b'Z' {
+        if i >= 7 {
+            return Err("Expected symbol code".into());
+        }
+        code |= (bytes[pos] as u64) << (8 * i);
+        i += 1;
+        pos += 1;
+    }
+    if i == 0 || pos != end {
         return Err("Expected symbol code".into());
     }
-    Ok(s.bytes()
-        .enumerate()
-        .fold(0u64, |acc, (i, b)| acc | ((b as u64) << (8 * i))))
+    Ok(code)
 }
 
 fn symbol_code_to_string(mut v: u64) -> String {
@@ -1988,13 +2166,40 @@ fn symbol_code_to_string(mut v: u64) -> String {
 }
 
 fn string_to_symbol(s: &str) -> Result<u64, String> {
-    let (precision, code) = s
-        .split_once(',')
-        .ok_or_else(|| "Expected symbol".to_string())?;
-    let precision: u8 = precision
-        .parse()
-        .map_err(|_| "Expected symbol".to_string())?;
-    Ok((string_to_symbol_code(code)? << 8) | precision as u64)
+    let bytes = s.as_bytes();
+    let mut pos = 0;
+    let end = bytes.len();
+    
+    let mut precision = 0u8;
+    let mut found = false;
+    while pos < end && bytes[pos] >= b'0' && bytes[pos] <= b'9' {
+        precision = precision.wrapping_mul(10).wrapping_add(bytes[pos] - b'0');
+        found = true;
+        pos += 1;
+    }
+    if !found || pos >= end || bytes[pos] != b',' {
+        return Err("Expected symbol".into());
+    }
+    pos += 1;
+    
+    while pos < end && bytes[pos] == b' ' {
+        pos += 1;
+    }
+    let mut code = 0u64;
+    let mut i = 0usize;
+    while pos < end && bytes[pos] >= b'A' && bytes[pos] <= b'Z' {
+        if i >= 7 {
+            return Err("Expected symbol".into());
+        }
+        code |= (bytes[pos] as u64) << (8 * i);
+        i += 1;
+        pos += 1;
+    }
+    if i == 0 || pos != end {
+        return Err("Expected symbol".into());
+    }
+    
+    Ok((code << 8) | precision as u64)
 }
 
 fn symbol_to_string(v: u64) -> String {
@@ -2002,37 +2207,69 @@ fn symbol_to_string(v: u64) -> String {
 }
 
 fn string_to_asset(s: &str) -> Result<(i64, u64), String> {
-    let (amount_s, code) = s
-        .trim()
-        .split_once(' ')
-        .ok_or_else(|| "Expected string containing asset".to_string())?;
-    let negative = amount_s.starts_with('-');
-    let digits = if negative { &amount_s[1..] } else { amount_s };
-    let mut amount = 0i64;
+    let bytes = s.as_bytes();
+    let mut pos = 0;
+    let end = bytes.len();
+    
+    while pos < end && bytes[pos] == b' ' {
+        pos += 1;
+    }
+    
+    let mut uamount = 0u64;
     let mut precision = 0u8;
-    let mut seen_dot = false;
-    for b in digits.bytes() {
-        match b {
-            b'0'..=b'9' => {
-                amount = amount
-                    .checked_mul(10)
-                    .and_then(|v| v.checked_add((b - b'0') as i64))
-                    .ok_or_else(|| "number is out of range".to_string())?;
-                if seen_dot {
-                    precision += 1;
-                }
-            }
-            b'.' if !seen_dot => seen_dot = true,
-            _ => return Err("Expected string containing asset".into()),
+    let mut negative = false;
+    
+    if pos < end && bytes[pos] == b'-' {
+        negative = true;
+        pos += 1;
+    }
+    
+    let mut found_digit = false;
+    while pos < end && bytes[pos] >= b'0' && bytes[pos] <= b'9' {
+        uamount = uamount.wrapping_mul(10).wrapping_add((bytes[pos] - b'0') as u64);
+        found_digit = true;
+        pos += 1;
+    }
+    if !found_digit {
+        return Err("Expected string containing asset".into());
+    }
+    
+    if pos < end && bytes[pos] == b'.' {
+        pos += 1;
+        while pos < end && bytes[pos] >= b'0' && bytes[pos] <= b'9' {
+            uamount = uamount.wrapping_mul(10).wrapping_add((bytes[pos] - b'0') as u64);
+            precision = precision.checked_add(1).ok_or_else(|| "precision overflow".to_string())?;
+            pos += 1;
         }
     }
-    if negative {
-        amount = -amount;
+    
+    let amount = if negative {
+        uamount.wrapping_neg() as i64
+    } else {
+        uamount as i64
+    };
+    
+    while pos < end && bytes[pos] == b' ' {
+        pos += 1;
     }
-    Ok((
-        amount,
-        (string_to_symbol_code(code)? << 8) | precision as u64,
-    ))
+    
+    let mut code = 0u64;
+    let mut i = 0usize;
+    while pos < end && bytes[pos] >= b'A' && bytes[pos] <= b'Z' {
+        if i >= 7 {
+            return Err("Expected string containing asset".into());
+        }
+        code |= (bytes[pos] as u64) << (8 * i);
+        i += 1;
+        pos += 1;
+    }
+    
+    if i == 0 || pos != end {
+        return Err("Expected string containing asset".into());
+    }
+    
+    let symbol = (code << 8) | precision as u64;
+    Ok((amount, symbol))
 }
 
 fn asset_to_string(amount: i64, symbol: u64) -> String {
@@ -2092,62 +2329,143 @@ fn bitset_to_string(bits: usize, bytes: &[u8]) -> String {
 }
 
 fn parse_time_seconds(s: &str) -> Result<u32, String> {
-    let (sec, _) = parse_time_parts(s)?;
-    Ok(sec as u32)
+    let bytes = s.as_bytes();
+    let mut pos = 0;
+    let end = bytes.len();
+    
+    let mut parse_uint = |pos: &mut usize, digits: usize| -> Option<u32> {
+        let mut result = 0u32;
+        for _ in 0..digits {
+            if *pos < end && bytes[*pos] >= b'0' && bytes[*pos] <= b'9' {
+                result = result * 10 + (bytes[*pos] - b'0') as u32;
+                *pos += 1;
+            } else {
+                return None;
+            }
+        }
+        Some(result)
+    };
+    
+    let y = parse_uint(&mut pos, 4).ok_or_else(|| "Expected time point".to_string())?;
+    if pos >= end || bytes[pos] != b'-' { return Err("Expected time point".into()); }
+    pos += 1;
+    
+    let m = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
+    if pos >= end || bytes[pos] != b'-' { return Err("Expected time point".into()); }
+    pos += 1;
+    
+    let d = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
+    if pos >= end || bytes[pos] != b'T' { return Err("Expected time point".into()); }
+    pos += 1;
+    
+    let h = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
+    if pos >= end || bytes[pos] != b':' { return Err("Expected time point".into()); }
+    pos += 1;
+    
+    let min = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
+    if pos >= end || bytes[pos] != b':' { return Err("Expected time point".into()); }
+    pos += 1;
+    
+    let sec = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
+    
+    let days = days_from_civil(y as i32, m, d);
+    let result_sec = (days as i32 as u32)
+        .wrapping_mul(86400)
+        .wrapping_add(h * 3600)
+        .wrapping_add(min * 60)
+        .wrapping_add(sec);
+    
+    if pos < end && bytes[pos] == b'.' {
+        pos += 1;
+        let mut parsed_digits = false;
+        while pos < end && bytes[pos] >= b'0' && bytes[pos] <= b'9' {
+            pos += 1;
+            parsed_digits = true;
+        }
+        if !parsed_digits {
+            return Err("Expected time point".into());
+        }
+    }
+    
+    if pos != end {
+        return Err("Expected time point".into());
+    }
+    
+    Ok(result_sec)
 }
 
 fn parse_time_microseconds(s: &str) -> Result<u64, String> {
-    let (sec, micros) = parse_time_parts(s)?;
-    Ok(sec * 1_000_000 + micros)
-}
-
-fn parse_time_parts(s: &str) -> Result<(u64, u64), String> {
-    if s.len() < 19 {
-        return Err("Expected time point".into());
-    }
-    let y: i32 = s[0..4]
-        .parse()
-        .map_err(|_| "Expected time point".to_string())?;
-    let m: u32 = s[5..7]
-        .parse()
-        .map_err(|_| "Expected time point".to_string())?;
-    let d: u32 = s[8..10]
-        .parse()
-        .map_err(|_| "Expected time point".to_string())?;
-    let h: u32 = s[11..13]
-        .parse()
-        .map_err(|_| "Expected time point".to_string())?;
-    let min: u32 = s[14..16]
-        .parse()
-        .map_err(|_| "Expected time point".to_string())?;
-    let sec: u32 = s[17..19]
-        .parse()
-        .map_err(|_| "Expected time point".to_string())?;
-    if &s[4..5] != "-"
-        || &s[7..8] != "-"
-        || &s[10..11] != "T"
-        || &s[13..14] != ":"
-        || &s[16..17] != ":"
-    {
-        return Err("Expected time point".into());
-    }
-    let mut micros = 0u64;
-    if s.as_bytes().get(19) == Some(&b'.') {
-        let frac = &s[20..];
-        let mut scale = 100_000u64;
-        for b in frac.bytes().take(6) {
-            if !b.is_ascii_digit() {
-                break;
+    let bytes = s.as_bytes();
+    let mut pos = 0;
+    let end = bytes.len();
+    
+    let mut parse_uint = |pos: &mut usize, digits: usize| -> Option<u32> {
+        let mut result = 0u32;
+        for _ in 0..digits {
+            if *pos < end && bytes[*pos] >= b'0' && bytes[*pos] <= b'9' {
+                result = result * 10 + (bytes[*pos] - b'0') as u32;
+                *pos += 1;
+            } else {
+                return None;
             }
-            micros += (b - b'0') as u64 * scale;
+        }
+        Some(result)
+    };
+    
+    let y = parse_uint(&mut pos, 4).ok_or_else(|| "Expected time point".to_string())?;
+    if pos >= end || bytes[pos] != b'-' { return Err("Expected time point".into()); }
+    pos += 1;
+    
+    let m = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
+    if pos >= end || bytes[pos] != b'-' { return Err("Expected time point".into()); }
+    pos += 1;
+    
+    let d = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
+    if pos >= end || bytes[pos] != b'T' { return Err("Expected time point".into()); }
+    pos += 1;
+    
+    let h = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
+    if pos >= end || bytes[pos] != b':' { return Err("Expected time point".into()); }
+    pos += 1;
+    
+    let min = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
+    if pos >= end || bytes[pos] != b':' { return Err("Expected time point".into()); }
+    pos += 1;
+    
+    let sec = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
+    
+    let days = days_from_civil(y as i32, m, d);
+    let result_sec = (days as i32 as u32)
+        .wrapping_mul(86400)
+        .wrapping_add(h * 3600)
+        .wrapping_add(min * 60)
+        .wrapping_add(sec);
+    
+    let mut result_us = (result_sec as u64).wrapping_mul(1_000_000);
+    
+    if pos < end {
+        if bytes[pos] != b'.' {
+            return Err("Expected time point".into());
+        }
+        pos += 1;
+        let mut scale = 100_000u64;
+        let mut parsed_digits = false;
+        while scale >= 1 && pos < end && bytes[pos] >= b'0' && bytes[pos] <= b'9' {
+            result_us = result_us.wrapping_add((bytes[pos] - b'0') as u64 * scale);
             scale /= 10;
+            pos += 1;
+            parsed_digits = true;
+        }
+        if !parsed_digits {
+            return Err("Expected time point".into());
         }
     }
-    let days = days_from_civil(y, m, d);
-    Ok((
-        days as u64 * 86_400 + h as u64 * 3600 + min as u64 * 60 + sec as u64,
-        micros,
-    ))
+    
+    if pos != end {
+        return Err("Expected time point".into());
+    }
+    
+    Ok(result_us)
 }
 
 fn format_time_microseconds(us: u64) -> String {
@@ -2267,9 +2585,10 @@ fn read_key_like(r: &mut Reader, kind: KeyKind) -> Result<String, String> {
             let rpid = r.string()?;
             let mut body = key;
             body.push(presence);
-            let mut tmp = Writer::new();
+            let mut buf = Vec::new();
+            let mut tmp = Writer::new(&mut buf);
             tmp.string(&rpid);
-            body.extend(tmp.bytes());
+            body.extend(buf);
             return Ok(format!(
                 "PUB_WA_{}",
                 base58_encode_with_checksum(&body, b"WA")
@@ -2280,10 +2599,11 @@ fn read_key_like(r: &mut Reader, kind: KeyKind) -> Result<String, String> {
             let auth = r.bytes_vec()?;
             let client = r.string()?;
             let mut body = sig;
-            let mut tmp = Writer::new();
+            let mut buf = Vec::new();
+            let mut tmp = Writer::new(&mut buf);
             tmp.bytes_vec(&auth);
             tmp.string(&client);
-            body.extend(tmp.bytes());
+            body.extend(buf);
             return Ok(format!(
                 "SIG_WA_{}",
                 base58_encode_with_checksum(&body, b"WA")
@@ -2537,8 +2857,10 @@ pub unsafe extern "C" fn abieos_get_bin_data(context: *mut abieos_context) -> *c
 
 pub unsafe extern "C" fn abieos_get_bin_hex(context: *mut abieos_context) -> *const c_char {
     with_ctx(context, std::ptr::null(), |ctx| {
-        ctx.result_str = cstring_lossy(&hex_encode(&ctx.result_bin));
-        Ok(ctx.result_str.as_ptr())
+        ctx.result_str.clear();
+        hex_encode_into(&ctx.result_bin, &mut ctx.result_str);
+        ctx.result_str.push(0);
+        Ok(ctx.result_str.as_ptr().cast())
     })
 }
 
@@ -2546,7 +2868,11 @@ pub unsafe extern "C" fn abieos_string_to_name(
     _context: *mut abieos_context,
     str_: *const c_char,
 ) -> u64 {
-    string_to_name_value(&cstr_arg(str_))
+    if str_.is_null() {
+        0
+    } else {
+        bytes_to_name_value(CStr::from_ptr(str_).to_bytes())
+    }
 }
 
 pub unsafe extern "C" fn abieos_name_to_string(
@@ -2554,8 +2880,10 @@ pub unsafe extern "C" fn abieos_name_to_string(
     name: u64,
 ) -> *const c_char {
     with_ctx(context, std::ptr::null(), |ctx| {
-        ctx.result_str = cstring_lossy(&name_to_string_value(name));
-        Ok(ctx.result_str.as_ptr())
+        ctx.result_str.clear();
+        name_to_string_value_into(name, &mut ctx.result_str);
+        ctx.result_str.push(0);
+        Ok(ctx.result_str.as_ptr().cast())
     })
 }
 
@@ -2627,9 +2955,8 @@ pub unsafe extern "C" fn abieos_get_type_for_action(
                 name_to_string_value(contract),
                 name_to_string_value(action)
             )
-        })?;
-        ctx.result_str = cstring_lossy(ty);
-        Ok(ctx.result_str.as_ptr())
+        })?.clone();
+        Ok(set_result_str(ctx, &ty))
     })
 }
 
@@ -2651,9 +2978,8 @@ pub unsafe extern "C" fn abieos_get_type_for_table(
                 name_to_string_value(contract),
                 name_to_string_value(table)
             )
-        })?;
-        ctx.result_str = cstring_lossy(ty);
-        Ok(ctx.result_str.as_ptr())
+        })?.clone();
+        Ok(set_result_str(ctx, &ty))
     })
 }
 
@@ -2675,9 +3001,8 @@ pub unsafe extern "C" fn abieos_get_type_for_action_result(
                 name_to_string_value(contract),
                 name_to_string_value(action_result)
             )
-        })?;
-        ctx.result_str = cstring_lossy(ty);
-        Ok(ctx.result_str.as_ptr())
+        })?.clone();
+        Ok(set_result_str(ctx, &ty))
     })
 }
 
@@ -2706,13 +3031,19 @@ unsafe fn json_to_bin_impl(
     json: *const c_char,
     reorderable: bool,
 ) -> abieos_bool {
-    let type_name = cstr_arg(type_);
-    let json = cstr_arg(json);
+    let type_name = match cstr_arg_borrowed(type_) {
+        Ok(t) => t,
+        Err(e) => return with_ctx(context, 0, |ctx| Err(e)),
+    };
+    let json_str = match cstr_arg_borrowed(json) {
+        Ok(j) => j,
+        Err(e) => return with_ctx(context, 0, |ctx| Err(e)),
+    };
     with_ctx(context, 0, |ctx| {
-        ctx.result_bin = if let Some(abi) = ctx.contracts.get_mut(&contract) {
-            abi.json_to_bin(&type_name, &json, reorderable)?
+        if let Some(abi) = ctx.contracts.get_mut(&contract) {
+            abi.json_to_bin(type_name, json_str, reorderable, &mut ctx.result_bin)?;
         } else if contract == 0 {
-            Abi::builtin_only().json_to_bin(&type_name, &json, reorderable)?
+            Abi::builtin_only().json_to_bin(type_name, json_str, reorderable, &mut ctx.result_bin)?;
         } else {
             return Err(format!(
                 "contract \"{}\" is not loaded",
@@ -2730,21 +3061,23 @@ pub unsafe extern "C" fn abieos_bin_to_json(
     data: *const c_char,
     size: usize,
 ) -> *const c_char {
-    let type_name = cstr_arg(type_);
+    let type_name = match cstr_arg_borrowed(type_) {
+        Ok(t) => t,
+        Err(e) => return with_ctx(context, std::ptr::null(), |ctx| Err(e)),
+    };
     let bytes = bytes_arg(data, size);
     with_ctx(context, std::ptr::null(), |ctx| {
         let json = if let Some(abi) = ctx.contracts.get_mut(&contract) {
-            abi.bin_to_json(&type_name, bytes)?
+            abi.bin_to_json(type_name, bytes)?
         } else if contract == 0 {
-            Abi::builtin_only().bin_to_json(&type_name, bytes)?
+            Abi::builtin_only().bin_to_json(type_name, bytes)?
         } else {
             return Err(format!(
                 "contract \"{}\" is not loaded",
                 name_to_string_value(contract)
             ));
         };
-        ctx.result_str = cstring_lossy(&json);
-        Ok(ctx.result_str.as_ptr())
+        Ok(set_result_str(ctx, &json))
     })
 }
 
@@ -2754,8 +3087,16 @@ pub unsafe extern "C" fn abieos_hex_to_json(
     type_: *const c_char,
     hex: *const c_char,
 ) -> *const c_char {
-    let hex = cstr_arg(hex);
-    match hex_decode(&hex) {
+    let hex_str = match cstr_arg_borrowed(hex) {
+        Ok(h) => h,
+        Err(e) => {
+            if let Some(ctx) = context.as_mut() {
+                set_error(ctx, e);
+            }
+            return std::ptr::null();
+        }
+    };
+    match hex_decode(hex_str) {
         Ok(data) => abieos_bin_to_json(
             context,
             contract,
@@ -2776,9 +3117,12 @@ pub unsafe extern "C" fn abieos_abi_json_to_bin(
     context: *mut abieos_context,
     json: *const c_char,
 ) -> abieos_bool {
-    let json = cstr_arg(json);
+    let json_str = match cstr_arg_borrowed(json) {
+        Ok(j) => j,
+        Err(e) => return with_ctx(context, 0, |ctx| Err(e)),
+    };
     with_ctx(context, 0, |ctx| {
-        let def = AbiDef::from_json_str(&json)?;
+        let def = AbiDef::from_json_str(json_str)?;
         def.check_version()?;
         ctx.result_bin = def.to_bin();
         Ok(1)
@@ -2797,8 +3141,7 @@ pub unsafe extern "C" fn abieos_abi_bin_to_json(
         }
         let def = AbiDef::read_bin(&mut Reader::new(bytes))?;
         def.check_version()?;
-        ctx.result_str = cstring_lossy(&def.to_json_string());
-        Ok(ctx.result_str.as_ptr())
+        Ok(set_result_str(ctx, &def.to_json_string()))
     })
 }
 

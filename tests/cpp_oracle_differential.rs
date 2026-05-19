@@ -625,6 +625,21 @@ mod cpp_oracle_differential {
                 CodecRow::failure("checksum256 too short", 0, "checksum256", r#""a0""#),
                 CodecRow::failure("symbol_code lowercase", 0, "symbol_code", r#""lower""#),
                 CodecRow::failure("asset null", 0, "asset", "null"),
+                // Milestone 4 — Boundary Audits (Numeric, Float, Time, Asset)
+                CodecRow::failure("uint8 with plus sign", 0, "uint8", r#""+5""#),
+                CodecRow::failure("uint64 with space", 0, "uint64", r#"" 123""#),
+                CodecRow::failure("uint64 with trailing space", 0, "uint64", r#""123 ""#),
+                CodecRow::failure("uint64 with trailing char", 0, "uint64", r#""123a""#),
+                CodecRow::failure("float32 invalid string", 0, "float32", r#""abc""#),
+                CodecRow::failure("bytes invalid hex characters", 0, "bytes", r#""ZZ""#),
+                CodecRow::success("time_point civil date", 0, "time_point", r#""1970-01-01T00:00:00.000000""#, r#""1970-01-01T00:00:00.000""#),
+                CodecRow::success("time_point_sec civil date", 0, "time_point_sec", r#""1970-01-01T00:00:00""#, r#""1970-01-01T00:00:00.000""#),
+                CodecRow::failure("time_point invalid format", 0, "time_point", r#""1970-01-01""#),
+                CodecRow::failure("time_point_sec invalid format", 0, "time_point_sec", r#""1970-01-01 00:00:00""#),
+                CodecRow::success("asset without dot", 0, "asset", r#""10 SYS""#, r#""10 SYS""#),
+                CodecRow::success("negative asset", 0, "asset", r#""-10 SYS""#, r#""-10 SYS""#),
+                CodecRow::success("asset double spaces", 0, "asset", r#""10  SYS""#, r#""10 SYS""#),
+                CodecRow::failure("asset lowercase symbol", 0, "asset", r#""10.0000 sys""#),
             ],
         );
     }
@@ -940,5 +955,198 @@ mod cpp_oracle_differential {
         );
         assert_eq!(fresh_oracle.json_to_hex("uint8", "1").unwrap(), "01");
         assert_eq!(fresh_oracle.hex_to_json("uint8", "01").unwrap(), "1");
+    }
+
+    #[test]
+    fn rust_backend_matches_cpp_oracle_for_duplicate_and_extra_fields() {
+        let rust = Abieos::new();
+        let oracle = Oracle::new();
+        let contract = rust.string_to_name(TEST_ABI_CONTRACT).unwrap();
+        assert_eq!(contract, oracle.string_to_name(TEST_ABI_CONTRACT));
+        rust.set_abi_json(TEST_ABI_CONTRACT, TEST_ABI).unwrap();
+        oracle.set_abi_json(contract, TEST_ABI).unwrap();
+
+        compare_codec_rows(
+            &rust,
+            &oracle,
+            &[
+                // Duplicate fields: C++ std::map overwrites → last value wins.
+                // {"x1":1, "x1":2} → x1=2
+                CodecRow::success(
+                    "duplicate field last-wins",
+                    contract,
+                    "s1",
+                    r#"{"x1":1, "x1":2}"#,
+                    r#"{"x1":2}"#,
+                ),
+                // Extra fields: C++ reorderable silently ignores extra keys.
+                CodecRow::success(
+                    "extra field ignored in reorderable",
+                    contract,
+                    "s1",
+                    r#"{"x1":5, "extra":99}"#,
+                    r#"{"x1":5}"#,
+                ),
+                // Duplicate + extra combined
+                CodecRow::success(
+                    "duplicate and extra fields together",
+                    contract,
+                    "s1",
+                    r#"{"x1":1, "extra":42, "x1":3}"#,
+                    r#"{"x1":3}"#,
+                ),
+                // All-extension struct with only extra fields: both fields are
+                // extensions, so they can be skipped, and the extra field is ignored.
+                CodecRow::success(
+                    "all-extension struct with extra field only",
+                    contract,
+                    "s4",
+                    r#"{"foo":7}"#,
+                    r#"{}"#,
+                ),
+            ],
+        );
+    }
+
+    #[test]
+    fn rust_backend_matches_cpp_oracle_for_missing_field_errors() {
+        let rust = Abieos::new();
+        let oracle = Oracle::new();
+        let contract = rust.string_to_name(TEST_ABI_CONTRACT).unwrap();
+        assert_eq!(contract, oracle.string_to_name(TEST_ABI_CONTRACT));
+        rust.set_abi_json(TEST_ABI_CONTRACT, TEST_ABI).unwrap();
+        oracle.set_abi_json(contract, TEST_ABI).unwrap();
+
+        compare_codec_rows(
+            &rust,
+            &oracle,
+            &[
+                // Missing required field
+                CodecRow::failure("s5 missing all fields", contract, "s5", r#"{}"#),
+                CodecRow::failure("s5 missing x2 and x3", contract, "s5", r#"{"x1":1}"#),
+                CodecRow::failure(
+                    "s5 missing x3",
+                    contract,
+                    "s5",
+                    r#"{"x1":1,"x2":2}"#,
+                ),
+                // Not an object
+                CodecRow::failure("s1 rejects null", contract, "s1", "null"),
+                CodecRow::failure("s1 rejects array", contract, "s1", "[1]"),
+            ],
+        );
+    }
+
+    #[test]
+    fn rust_backend_matches_cpp_oracle_for_trailing_and_malformed_json() {
+        let rust = Abieos::new();
+        let oracle = Oracle::new();
+
+        // Trailing content after valid JSON (native types, no contract needed)
+        let trailing_cases: &[(&str, &str, &str)] = &[
+            ("int8 trailing text", "int8", "1 extra"),
+            ("int8 trailing brace", "int8", "1}"),
+            ("string trailing text", "string", r#""hello" extra"#),
+            ("bool trailing comma", "bool", "true,"),
+        ];
+
+        for &(label, ty, json) in trailing_cases {
+            let rust_result = rust
+                .json_to_hex_native(0, ty, json)
+                .map_err(|e| e.to_string());
+            let oracle_result = oracle.json_to_hex(ty, json);
+            assert_eq!(
+                result_status(&rust_result),
+                result_status(&oracle_result),
+                "trailing content status mismatch for {label}: rust={rust_result:?} oracle={oracle_result:?}"
+            );
+            assert!(
+                rust_result.is_err(),
+                "trailing content should fail for {label}"
+            );
+        }
+
+        // Invalid escape sequences
+        let escape_cases: &[(&str, &str, &str)] = &[
+            ("invalid backslash-x", "string", r#""\x""#),
+            ("incomplete unicode escape", "string", r#""\u12""#),
+            ("bare backslash at end", "string", r#""\"#),
+        ];
+
+        for &(label, ty, json) in escape_cases {
+            let rust_result = rust
+                .json_to_hex_native(0, ty, json)
+                .map_err(|e| e.to_string());
+            let oracle_result = oracle.json_to_hex(ty, json);
+            assert_eq!(
+                result_status(&rust_result),
+                result_status(&oracle_result),
+                "invalid escape status mismatch for {label}: rust={rust_result:?} oracle={oracle_result:?}"
+            );
+            assert!(
+                rust_result.is_err(),
+                "invalid escape should fail for {label}"
+            );
+        }
+
+        // Known divergence: trailing whitespace after a scalar value.
+        // Rust's custom parser skips trailing whitespace (line 122-124 in
+        // rust.rs), matching the JSON spec.  C++ uses RapidJSON's SAX
+        // streaming parser which, for native types, rejects trailing
+        // whitespace as the SAX parser internally calls `complete()` which
+        // expects full consumption.  We assert Rust succeeds independently.
+        let rust_ws = rust
+            .json_to_hex_native(0, "int8", "1   ")
+            .map_err(|e| e.to_string());
+        assert!(rust_ws.is_ok(), "Rust should accept trailing whitespace");
+        assert_eq!(rust_ws.unwrap(), "01");
+    }
+
+    #[test]
+    fn rust_backend_matches_cpp_oracle_for_binary_overrun_edges() {
+        let rust = Abieos::new();
+        let oracle = Oracle::new();
+        let contract = rust.string_to_name(TEST_ABI_CONTRACT).unwrap();
+        assert_eq!(contract, oracle.string_to_name(TEST_ABI_CONTRACT));
+        rust.set_abi_json(TEST_ABI_CONTRACT, TEST_ABI).unwrap();
+        oracle.set_abi_json(contract, TEST_ABI).unwrap();
+
+        // Additional binary overrun cases that test specific edge boundaries
+        let overrun_cases: &[(&str, u64, &str, &str)] = &[
+            // Completely empty binary for various types
+            ("int8 empty", 0, "int8", ""),
+            ("int32 empty", 0, "int32", ""),
+            ("int64 empty", 0, "int64", ""),
+            ("float32 empty", 0, "float32", ""),
+            ("float64 empty", 0, "float64", ""),
+            ("name empty", 0, "name", ""),
+            // One byte short for multi-byte types
+            ("int16 one byte", 0, "int16", "01"),
+            ("int32 three bytes", 0, "int32", "010203"),
+            ("int64 seven bytes", 0, "int64", "01020304050607"),
+            ("float32 three bytes", 0, "float32", "010203"),
+            ("float64 seven bytes", 0, "float64", "01020304050607"),
+            // Struct with partial data
+            ("s5 one byte", contract, "s5", "01"),
+            ("s5 two bytes", contract, "s5", "0102"),
+            // Variant with invalid index
+            ("v1 invalid index", contract, "v1", "FF"),
+        ];
+
+        for &(label, contract_id, ty, hex) in overrun_cases {
+            let rust_result = if contract_id == 0 {
+                rust.hex_to_json_native(0, ty, hex)
+                    .map_err(|e| e.to_string())
+            } else {
+                rust.hex_to_json(TEST_ABI_CONTRACT, ty, hex)
+                    .map_err(|e| e.to_string())
+            };
+            let oracle_result = oracle.hex_to_json_contract(contract_id, ty, hex);
+            assert_eq!(
+                result_status(&rust_result),
+                result_status(&oracle_result),
+                "binary overrun status mismatch for {label}: rust={rust_result:?} oracle={oracle_result:?}"
+            );
+        }
     }
 }

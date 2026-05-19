@@ -282,7 +282,7 @@ mod rust_backend_check_error_port {
                     label: "bytes rejects non-hex",
                     ty: "bytes",
                     json: r#""yz""#,
-                    contains: &["expected hex string"],
+                    contains: &["Expected string containing hex"],
                 },
                 JsonErrorCase {
                     label: "bytes rejects bool",
@@ -294,7 +294,7 @@ mod rust_backend_check_error_port {
                     label: "checksum256 rejects non-hex",
                     ty: "checksum256",
                     json: r#""yz""#,
-                    contains: &["expected hex string"],
+                    contains: &["Expected string containing hex"],
                 },
                 JsonErrorCase {
                     label: "checksum256 rejects bool",
@@ -342,7 +342,7 @@ mod rust_backend_check_error_port {
                     label: "asset rejects missing symbol",
                     ty: "asset",
                     json: r#""1.0000""#,
-                    contains: &["Expected string containing asset"],
+                    contains: &["Expected symbol code"],
                 },
                 JsonErrorCase {
                     label: "asset rejects lowercase symbol",
@@ -496,14 +496,12 @@ mod rust_backend_check_error_port {
         assert_json_to_hex_contract_errors(
             &abieos,
             &[
-                JsonErrorCase {
-                    label: "s4 rejects missing a1 before extension",
-                    ty: "s4",
-                    json: r#"{"foo":7}"#,
-                    // The public Rust wrapper uses reorderable conversion, which
-                    // sees the extra object member before the missing field.
-                    contains: &["Unexpected field"],
-                },
+                // In reorderable mode, C++ silently ignores extra fields
+                // (jvalue_to_bin iterates only over struct fields).  s4 has
+                // all-extension fields, so they are skipped, and "foo" is
+                // ignored.  This case now succeeds, matching C++ behavior.
+                // The success assertion lives in
+                // cpp_oracle_differential::rust_backend_matches_cpp_oracle_for_duplicate_and_extra_fields.
                 JsonErrorCase {
                     label: "s4 rejects wrong optional field shape",
                     ty: "s4",

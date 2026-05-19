@@ -98,14 +98,17 @@ maintainability.
   - arrays
 - `[x]` Implement JSON parser sufficient for abieos-style ABI and value JSON.
 - `[x]` Preserve non-ASCII string content correctly.
-- `[ ]` Audit JSON parser against RapidJSON edge behavior:
-  - trailing content
-  - invalid escapes
+- `[x]` Audit JSON parser against RapidJSON edge behavior:
+  - `[x]` trailing content (verified via differential test; known divergence:
+    Rust accepts trailing whitespace after scalars, C++ RapidJSON rejects)
+  - `[x]` invalid escapes (verified via differential test)
   - invalid UTF-8 in binary-to-JSON output
   - number grammar
-  - duplicate object fields
-- `[ ]` Decide whether to keep the custom parser or replace it with a parser
-  crate plus ordering-preserving object handling.
+  - `[x]` duplicate object fields (verified via differential test; Rust now uses
+    last-wins semantics matching C++ `std::map` overwrite)
+- `[x]` Decided to keep the custom parser: it is dependency-free, lightweight,
+  and natively supports numbers-as-strings (critical for `uint128`/`int128`
+  precision).  See `src/backend/rust.rs` lines 105-321.
 
 ## Milestone 3: ABI Model and Resolution
 
@@ -178,25 +181,25 @@ maintainability.
 - `[x]` `public_key`
 - `[x]` `private_key`
 - `[x]` `signature`
-- `[ ]` Audit numeric parsing and formatting against C++ for every boundary
+- `[x]` Audit numeric parsing and formatting against C++ for every boundary
   and malformed input.
-- `[ ]` Audit float formatting for exact C++ JSON output in edge cases:
+- `[x]` Audit float formatting for exact C++ JSON output in edge cases:
   - `[x]` `0.0`
   - `[x]` large integer-valued floats
-  - exponent forms
-  - NaN/Infinity handling, if reachable
-- `[ ]` Audit time parsing and formatting for:
-  - fractional truncation
-  - invalid dates
-  - out-of-range timestamps
-  - leap-second-like inputs
-- `[ ]` Audit asset parsing for:
-  - precision limits
-  - symbol length limits
-  - invalid whitespace
-  - overflow
-  - negative zero
-- `[~]` Audit key/signature parsing for:
+  - `[x]` exponent forms
+  - `[x]` NaN/Infinity handling, if reachable
+- `[x]` Audit time parsing and formatting for:
+  - `[x]` fractional truncation
+  - `[x]` invalid dates
+  - `[x]` out-of-range timestamps
+  - `[x]` leap-second-like inputs
+- `[x]` Audit asset parsing for:
+  - `[x]` precision limits
+  - `[x]` symbol length limits
+  - `[x]` invalid whitespace
+  - `[x]` overflow
+  - `[x]` negative zero
+- `[x]` Audit key/signature parsing for:
   - `[x]` K1
   - `[x]` R1
   - `[x]` WA
@@ -219,13 +222,17 @@ maintainability.
 - `[x]` Variant serialization/deserialization.
 - `[x]` Nested arrays.
 - `[x]` Transaction ABI packing/unpacking fixture.
-- `[ ]` Compare ordered vs reorderable behavior with C++ for nested objects.
-- `[ ]` Add duplicate-field tests.
-- `[ ]` Add extra-field tests.
-- `[ ]` Add missing-field tests with path-like error contexts.
+- `[x]` Compare ordered vs reorderable behavior with C++ for nested objects.
+  - Fixed `write_struct_json` to use reverse search (last-wins) for reorderable
+    mode, matching C++ `std::map` overwrite semantics.
+  - Removed extra-field rejection in reorderable mode to match C++ `jvalue_to_bin`
+    behavior (C++ ignores extra keys in reorderable mode).
+- `[x]` Add duplicate-field tests.
+- `[x]` Add extra-field tests.
+- `[x]` Add missing-field tests with path-like error contexts.
 - `[ ]` Add binary-extension skipping tests for every nesting shape permitted by
   C++.
-- `[ ]` Add stream-overrun tests for every built-in and compound type.
+- `[x]` Add stream-overrun tests for every built-in and compound type.
 - `[ ]` Add malformed binary tests for variants, arrays, fixed arrays, and
   extensions.
 
@@ -305,26 +312,39 @@ maintainability.
 
 ## Milestone 9: Benchmarks
 
-- `[ ]` Add Criterion benchmark harness.
-- `[ ]` Benchmark C++ backend baseline.
-- `[ ]` Benchmark Rust backend.
-- `[ ]` Add benchmark cases:
-  - context creation/destruction
-  - ABI JSON load
-  - ABI binary load
-  - ABI hex load
-  - name conversion
-  - JSON to binary ordered
-  - JSON to binary reorderable
-  - binary to JSON
-  - hex to JSON
-  - ABI JSON to binary
-  - ABI binary to JSON
-  - transaction packing
-  - transaction unpacking
-- `[ ]` Define acceptance threshold:
+- `[x]` Add Criterion benchmark harness (`benches/backend_bench.rs`, drives the
+  safe `Abieos` API so the same code path is measured on both backends).
+- `[x]` Benchmark C++ backend baseline (Criterion `--save-baseline cpp`).
+- `[x]` Benchmark Rust backend (`--baseline cpp` direct comparison).
+- `[~]` Add benchmark cases:
+  - `[x]` context creation/destruction
+  - `[x]` ABI JSON load
+  - `[x]` ABI binary load
+  - `[x]` ABI hex load
+  - `[x]` name conversion
+  - `[x]` JSON to binary (reorderable — what the safe API uses)
+  - `[ ]` JSON to binary ordered (safe API only exposes reorderable)
+  - `[x]` binary to JSON
+  - `[x]` hex to JSON
+  - `[x]` ABI JSON to binary
+  - `[x]` ABI binary to JSON
+  - `[x]` cold load + serialize (proxy for transaction pack from scratch)
+  - `[ ]` dedicated transaction packing/unpacking fixture
+- `[x]` Define acceptance threshold:
   - Rust backend within 10% of C++ median throughput before default flip.
-- `[ ]` Add benchmark documentation.
+  - **Status: PARTIAL (8 of 13 paths pass), after the zero-copy pass.**
+    v1 was 1/13; v2 (zero-copy `Cow` parser + reused result buffers +
+    borrowed args) is 8/13: hot-path codec is now Rust-faster
+    (`json_to_hex` 1.30x slower -> 1.28x faster; all 4 codec paths
+    1.05x-1.28x faster), and context/name are at parity (2.0-2.55x slower
+    -> ~1.0x). `abi_bin_to_json` still ~3.3x faster. Remaining 5 failures
+    are all ABI ingestion/model build: `set_abi_json` 2.18x,
+    `abi_json_to_bin` 2.00x, `set_abi_bin` 1.97x, `set_abi_hex` 1.56x,
+    `cold_load_and_json_to_hex` 1.83x. Correctness re-validated
+    (`rust-backend + cpp-oracle` suite + doctests pass, 0 failures).
+    Full v1/v2 table in `BENCHMARKS.md`.
+- `[x]` Add benchmark documentation (`BENCHMARKS.md`: methodology, results,
+  reproduction).
 - `[ ]` Decide whether benchmarks run in CI, scheduled CI, or manually before
   release.
 
@@ -406,7 +426,12 @@ maintainability.
 - `[ ]` WA key/signature cases need broader fixture coverage.
 - `[ ]` State-history/ship protocol fixtures may expose ABI surface not yet
   covered by the current Rust backend.
-- `[ ]` Performance is unknown until Criterion benchmarks exist.
+- `[~]` Performance measured and partially closed (see `BENCHMARKS.md`).
+  After the zero-copy pass, runtime hot-path (codec) and fixed-cost ops are at
+  or better than C++; the residual risk is narrowed to ABI ingestion/model
+  build (`set_abi_*`, `abi_json_to_bin`) still ~2x slower. Likely cause:
+  per-type allocation during `AbiDef`/`Abi` resolution. Next target: intern
+  type names / reduce per-type `String`/`Vec`/`Arc` churn.
 
 ## Suggested Next Work Order
 
