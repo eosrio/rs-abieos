@@ -433,6 +433,8 @@ mod cpp_oracle_differential {
     fn rust_backend_matches_cpp_oracle_for_builtin_codec_rows() {
         let rust = Abieos::new();
         let oracle = Oracle::new();
+        rust.set_abi_json_native(0, r#"{"version": "eosio::abi/1.1"}"#).unwrap();
+        oracle.set_abi_json(0, r#"{"version": "eosio::abi/1.1"}"#).unwrap();
 
         compare_codec_rows(
             &rust,
@@ -774,6 +776,69 @@ mod cpp_oracle_differential {
     }
 
     #[test]
+    fn rust_backend_matches_cpp_oracle_for_new_abi_fixtures() {
+        let rust = Abieos::new();
+        let oracle = Oracle::new();
+
+        // 1. Load testkv
+        let testkv_contract = rust.string_to_name("testkv").unwrap();
+        let testkv_abi = include_str!("../abis/testkv.abi.json");
+        rust.set_abi_json("testkv", testkv_abi).unwrap();
+        oracle.set_abi_json(testkv_contract, testkv_abi).unwrap();
+
+        // 2. Load packed_transaction
+        let packed_tx_contract = rust.string_to_name("packed.tx").unwrap();
+        let packed_tx_abi = include_str!("../abis/packed_transaction.abi.json");
+        rust.set_abi_json("packed.tx", packed_tx_abi).unwrap();
+        oracle.set_abi_json(packed_tx_contract, packed_tx_abi).unwrap();
+
+        // 3. Load ship
+        let ship_contract = rust.string_to_name("ship").unwrap();
+        let ship_abi = include_str!("../abis/ship.abi.json");
+        rust.set_abi_json("ship", ship_abi).unwrap();
+        oracle.set_abi_json(ship_contract, ship_abi).unwrap();
+
+        compare_codec_rows(
+            &rust,
+            &oracle,
+            &[
+                // testkv: my_struct
+                CodecRow::success(
+                    "testkv my_struct",
+                    testkv_contract,
+                    "my_struct",
+                    r#"{"primary":"user1","foo":"hello","bar":123456,"fullname":"Igor Lins","age":30}"#,
+                    r#"{"primary":"user1","foo":"hello","bar":"123456","fullname":"Igor Lins","age":30}"#,
+                ),
+                // testkv: tuple_string_uint32
+                CodecRow::success(
+                    "testkv tuple",
+                    testkv_contract,
+                    "tuple_string_uint32",
+                    r#"{"field_0":"test","field_1":999}"#,
+                    r#"{"field_0":"test","field_1":999}"#,
+                ),
+                // packed_transaction: action
+                CodecRow::success(
+                    "packed_tx action",
+                    packed_tx_contract,
+                    "action",
+                    r#"{"account":"eosio.token","name":"transfer","authorization":[{"actor":"useraaaaaaaa","permission":"active"}],"data":"608C31C6187315D6"}"#,
+                    r#"{"account":"eosio.token","name":"transfer","authorization":[{"actor":"useraaaaaaaa","permission":"active"}],"data":"608C31C6187315D6"}"#,
+                ),
+                // ship: block_position
+                CodecRow::success(
+                    "ship block_position",
+                    ship_contract,
+                    "block_position",
+                    r#"{"block_num":1000,"block_id":"000003E800000000000000000000000000000000000000000000000000000000"}"#,
+                    r#"{"block_num":1000,"block_id":"000003E800000000000000000000000000000000000000000000000000000000"}"#,
+                ),
+            ]
+        );
+    }
+
+    #[test]
     fn rust_backend_matches_cpp_oracle_for_abi_json_and_binary_helpers() {
         let rust = Abieos::new();
         let oracle = Oracle::new();
@@ -867,6 +932,8 @@ mod cpp_oracle_differential {
 
         let fresh_rust = Abieos::new();
         let fresh_oracle = Oracle::new();
+        fresh_rust.set_abi_json_native(0, r#"{"version": "eosio::abi/1.1"}"#).unwrap();
+        fresh_oracle.set_abi_json(0, r#"{"version": "eosio::abi/1.1"}"#).unwrap();
         assert_eq!(
             fresh_rust.json_to_hex_native(0, "uint8", "1").unwrap(),
             "01"

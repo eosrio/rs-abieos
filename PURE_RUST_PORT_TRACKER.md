@@ -46,7 +46,8 @@ maintainability.
 - `[x]` Focused Rust-only `check_error` fixtures cover numeric/type errors,
   malformed built-ins, fixed-array/type-spec errors, variants, nested struct
   shape errors, and stream overruns.
-- `[x]` Bulk K1/R1/WIF key and signature fixtures are ported to Rust-only tests.
+- `[x]` Bulk K1/R1/WA/WIF key and signature fixtures are ported to
+  Rust-only tests.
 
 ## Milestone 1: Backend Architecture
 
@@ -128,12 +129,12 @@ maintainability.
   - built-in namespace when no ABI is loaded
   - loaded ABI when contract `0` has an ABI
   - built-ins still available through loaded contract `0`
-- `[ ]` Exhaustively port C++ type-spec parser error cases:
-  - nested optional/array invalid combinations
-  - extension nesting invalid combinations
-  - malformed fixed-array syntax
-  - recursion limit
-  - unknown types
+- `[~]` Exhaustively port C++ type-spec parser error cases:
+  - `[ ]` nested optional/array invalid combinations
+  - `[ ]` extension nesting invalid combinations
+  - `[x]` malformed fixed-array syntax
+  - `[x]` recursion limit
+  - `[x]` unknown types
 - `[ ]` Add ABI validation parity for:
   - missing type names
   - duplicate type names
@@ -198,7 +199,7 @@ maintainability.
 - `[~]` Audit key/signature parsing for:
   - `[x]` K1
   - `[x]` R1
-  - `[ ]` WA
+  - `[x]` WA
   - `[x]` legacy EOS public keys
   - `[x]` legacy WIF private keys
   - `[x]` checksum mismatch
@@ -243,15 +244,15 @@ maintainability.
     `tests/rust_backend_check_type_port.rs`.
   - `[x]` Large integer-valued `float64` rows are ported.
   - `[x]` Bulk K1/R1/WIF public/private key and signature rows are ported.
-  - `[ ]` WA key/signature rows, packed transaction, and protocol fixture rows
-    remain.
+  - `[x]` WA key/signature rows are ported.
+  - `[x]` Packed transaction and protocol fixture rows are successfully ported.
 - `[~]` Port all remaining `check_error` cases from `test.cpp`.
   - `[x]` Focused table-driven Rust-only error fixtures exist in
     `tests/rust_backend_check_error_port.rs`.
   - `[!]` Full C++ path-aware error-string parity still needs backend work.
-- `[ ]` Port packed transaction fixtures.
-- `[ ]` Port state-history / ship protocol fixtures.
-- `[ ]` Port KV/table/action result ABI fixtures.
+- `[x]` Port packed transaction fixtures.
+- `[x]` Port state-history / ship protocol fixtures.
+- `[x]` Port KV/table/action result ABI fixtures.
 - `[ ]` Port ABI JSON/bin conversion edge fixtures.
 - `[ ]` Convert fixtures into data-driven tables shared by Rust-only and
   oracle-differential tests.
@@ -273,7 +274,7 @@ maintainability.
   - ABI JSON to binary
   - ABI binary to JSON
   - error capture
-- `[~]` Run every Rust parity fixture through both Rust and C++ oracle when
+- `[x]` Run every Rust parity fixture through both Rust and C++ oracle when
   `cpp-oracle` is enabled.
 - `[x]` Compare success/failure status.
 - `[x]` Compare output hex/binary bytes.

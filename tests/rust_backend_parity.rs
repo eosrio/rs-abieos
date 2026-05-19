@@ -429,4 +429,47 @@ mod rust_backend_parity {
             "contract 0 should still provide builtins when no ABI is loaded"
         );
     }
+
+    #[test]
+    fn rust_backend_handles_new_abi_fixtures() {
+        let abieos = Abieos::new();
+
+        // 1. Load testkv.abi.json
+        let testkv_abi = include_str!("../abis/testkv.abi.json");
+        abieos.set_abi_json("testkv", testkv_abi).unwrap();
+
+        // Test my_struct serialization/deserialization
+        let my_struct_json = r#"{"primary":"user1","foo":"hello","bar":123456,"fullname":"Igor Lins","age":30}"#;
+        let my_struct_expected = r#"{"primary":"user1","foo":"hello","bar":"123456","fullname":"Igor Lins","age":30}"#;
+        let my_struct_hex = abieos.json_to_hex("testkv", "my_struct", my_struct_json).unwrap();
+        let my_struct_back = abieos.hex_to_json("testkv", "my_struct", &my_struct_hex).unwrap();
+        assert_eq!(my_struct_back, my_struct_expected);
+
+        // Test tuple_string_uint32 serialization/deserialization
+        let tuple_json = r#"{"field_0":"test","field_1":999}"#;
+        let tuple_hex = abieos.json_to_hex("testkv", "tuple_string_uint32", tuple_json).unwrap();
+        let tuple_back = abieos.hex_to_json("testkv", "tuple_string_uint32", &tuple_hex).unwrap();
+        assert_eq!(tuple_back, tuple_json);
+
+        // 2. Load packed_transaction.abi.json
+        let packed_tx_abi = include_str!("../abis/packed_transaction.abi.json");
+        abieos.set_abi_json("packed_tx", packed_tx_abi).unwrap();
+
+        // Test action serialization/deserialization
+        let action_json = r#"{"account":"eosio.token","name":"transfer","authorization":[{"actor":"useraaaaaaaa","permission":"active"}],"data":"608C31C6187315D6"}"#;
+        let action_hex = abieos.json_to_hex("packed_tx", "action", action_json).unwrap();
+        let action_back = abieos.hex_to_json("packed_tx", "action", &action_hex).unwrap();
+        assert_eq!(action_back, action_json);
+
+        // 3. Load ship.abi.json
+        let ship_abi = include_str!("../abis/ship.abi.json");
+        abieos.set_abi_json("ship", ship_abi).unwrap();
+
+        // Test block_position serialization/deserialization
+        let block_pos_json = r#"{"block_num":1000,"block_id":"000003E800000000000000000000000000000000000000000000000000000000"}"#;
+        let block_pos_hex = abieos.json_to_hex("ship", "block_position", block_pos_json).unwrap();
+        let block_pos_back = abieos.hex_to_json("ship", "block_position", &block_pos_hex).unwrap();
+        assert_eq!(block_pos_back, block_pos_json);
+    }
 }
+
