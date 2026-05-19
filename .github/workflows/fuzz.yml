@@ -1,0 +1,72 @@
+name: Fuzz (scheduled)
+
+# Coverage-guided deep fuzzing. This is intentionally NOT part of the
+# per-push CI (cargo-fuzz needs nightly + libFuzzer and is slow); the fast
+# seeded property/fuzz smoke runs in ci.yml on every push/PR instead.
+#
+# Runs weekly and on demand. Each libFuzzer target gets a bounded time
+# budget; any discovered crash input is uploaded as a build artifact so it
+# can be replayed locally with `cargo +nightly fuzz run <target> <artifact>`.
+
+on:
+  schedule:
+    # Mondays 04:17 UTC.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      max_total_time:
+        description: "Seconds to fuzz each target"
+        required: false
+        default: "300"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: cargo-fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_json_to_bin
+          - fuzz_bin_to_json
+          - fuzz_abi_json_to_bin
+          - fuzz_abi_bin_to_json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache cargo registry & fuzz build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            fuzz/target
+          key: ${{ runner.os }}-fuzz-${{ matrix.target }}-${{ hashFiles('fuzz/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-fuzz-${{ matrix.target }}-
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Run ${{ matrix.target }}
+        run: >
+          cargo +nightly fuzz run ${{ matrix.target }} --
+          -max_total_time=${{ github.event.inputs.max_total_time || '300' }}
+          -rss_limit_mb=4096
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: |
+            fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
+          retention-days: 30

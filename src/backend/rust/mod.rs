@@ -1,20 +1,24 @@
 mod abi;
 mod abi_def;
+mod abi_json;
 mod builtins;
 mod crypto;
+mod fnv;
 mod hex;
+mod istr;
 mod json;
 mod name;
 mod stream;
+mod swar;
 mod symbol;
 mod time;
 
-use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 
 use abi::Abi;
 use abi_def::AbiDef;
+use fnv::FnvMap;
 use hex::{hex_decode, hex_encode_into};
 use name::{bytes_to_name_value, name_to_string_value, name_to_string_value_into};
 use stream::Reader;
@@ -31,7 +35,7 @@ pub struct abieos_context_s {
     last_error: CString,
     result_str: Vec<u8>,
     result_bin: Vec<u8>,
-    contracts: BTreeMap<u64, Abi>,
+    contracts: FnvMap<u64, Abi>,
 }
 
 impl Default for abieos_context_s {
@@ -40,7 +44,7 @@ impl Default for abieos_context_s {
             last_error: CString::default(),
             result_str: Vec::new(),
             result_bin: Vec::new(),
-            contracts: BTreeMap::new(),
+            contracts: FnvMap::default(),
         }
     }
 }
@@ -404,7 +408,8 @@ pub unsafe extern "C" fn abieos_abi_json_to_bin(
     with_ctx(context, 0, |ctx| {
         let def = AbiDef::from_json_str(json_str)?;
         def.check_version()?;
-        ctx.result_bin = def.to_bin();
+        ctx.result_bin.reserve(json_str.len());
+        def.to_bin_into(&mut ctx.result_bin);
         Ok(1)
     })
 }

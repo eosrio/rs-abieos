@@ -132,6 +132,12 @@ impl<'a> Reader<'a> {
         let bytes = self.read(len)?;
         String::from_utf8(bytes.to_vec()).map_err(|_| "Invalid encoding in string".into())
     }
+    pub(crate) fn istr(&mut self) -> Result<super::istr::IStr, String> {
+        let len = self.varuint32()? as usize;
+        let bytes = self.read(len)?;
+        let s = std::str::from_utf8(bytes).map_err(|_| "Invalid encoding in string".to_string())?;
+        Ok(super::istr::IStr::from(s))
+    }
     pub(crate) fn bytes_vec(&mut self) -> Result<Vec<u8>, String> {
         let len = self.varuint32()? as usize;
         Ok(self.read(len)?.to_vec())

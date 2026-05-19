@@ -179,6 +179,46 @@ jobs:
       - name: Run differential oracle tests
         run: cargo test --no-default-features --features "rust-backend cpp-oracle"
 
+  fuzz-smoke:
+    name: Fuzz/property smoke (Rust backend)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-fuzz-smoke-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-fuzz-smoke-cargo-
+
+      # Dependency-free seeded property/fuzz suite. A deeper iteration count
+      # than the default (400) is cheap here (~2s for 20k) and meaningfully
+      # widens the random-input surface on every push/PR. Coverage-guided
+      # deep fuzzing runs on a schedule (.github/workflows/fuzz.yml).
+      - name: Run property/fuzz smoke (fixed seed)
+        env:
+          ABIEOS_FUZZ_ITERS: "20000"
+        run: >
+          cargo test --no-default-features --features rust-backend
+          --test rust_backend_fuzz_property
+
+      - name: Run property/fuzz smoke (run-varying seed)
+        env:
+          ABIEOS_FUZZ_ITERS: "20000"
+          ABIEOS_FUZZ_SEED: ${{ github.run_id }}
+        run: >
+          cargo test --no-default-features --features rust-backend
+          --test rust_backend_fuzz_property
+
   coverage:
     name: Coverage
     runs-on: ubuntu-latest

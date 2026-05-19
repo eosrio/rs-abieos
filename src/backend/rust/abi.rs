@@ -1,59 +1,82 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
+use std::sync::OnceLock;
 
 use super::abi_def::{AbiDef, FieldDef, StructDef};
 use super::builtins::{read_builtin, write_builtin, BUILTINS};
+use super::fnv::{fnv_map_with_capacity, FnvMap};
+use super::istr::IStr;
 use super::json::{parse_json, quote_json, Json};
 use super::stream::{Reader, Writer};
 
 #[derive(Clone)]
 pub(crate) enum TypeKind {
     Builtin,
-    Alias(String),
-    Optional(String),
-    Extension(String),
-    Array(String),
-    FixedArray(String, usize),
+    Alias(IStr),
+    Optional(IStr),
+    Extension(IStr),
+    Array(IStr),
+    FixedArray(IStr, usize),
     Struct(std::sync::Arc<[FieldDef]>),
-    Variant(std::sync::Arc<[String]>),
+    Variant(std::sync::Arc<[IStr]>),
 }
 
 #[derive(Clone)]
 pub(crate) struct Abi {
-    pub(crate) action_types: BTreeMap<u64, String>,
-    pub(crate) table_types: BTreeMap<u64, String>,
-    pub(crate) action_result_types: BTreeMap<u64, String>,
-    types: BTreeMap<String, TypeKind>,
+    pub(crate) action_types: FnvMap<u64, IStr>,
+    pub(crate) table_types: FnvMap<u64, IStr>,
+    pub(crate) action_result_types: FnvMap<u64, IStr>,
+    types: FnvMap<IStr, TypeKind>,
+}
+
+/// The builtin type table never changes, so build it once and clone it
+/// (inline `IStr` clones are `memcpy`) instead of re-constructing ~36 keys on
+/// every ABI load. This is a large fraction of the fixed cost for small ABIs.
+fn builtin_types() -> &'static FnvMap<IStr, TypeKind> {
+    static CACHE: OnceLock<FnvMap<IStr, TypeKind>> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        let mut types = fnv_map_with_capacity(BUILTINS.len() + 1);
+        for name in BUILTINS {
+            types.insert(IStr::from(*name), TypeKind::Builtin);
+        }
+        types.insert(
+            IStr::from("extended_asset"),
+            TypeKind::Struct(
+                vec![
+                    FieldDef {
+                        name: IStr::from("quantity"),
+                        type_name: IStr::from("asset"),
+                    },
+                    FieldDef {
+                        name: IStr::from("contract"),
+                        type_name: IStr::from("name"),
+                    },
+                ]
+                .into(),
+            ),
+        );
+        types
+    })
 }
 
 impl Abi {
     pub(crate) fn builtin_only() -> Self {
-        let mut abi = Abi {
-            action_types: BTreeMap::new(),
-            table_types: BTreeMap::new(),
-            action_result_types: BTreeMap::new(),
-            types: BTreeMap::new(),
-        };
-        abi.install_builtin_types();
-        abi
+        // Builtins live in the shared static; `types` stays empty and lookups
+        // fall back to it. No 37-entry map clone per construction.
+        Abi {
+            action_types: FnvMap::default(),
+            table_types: FnvMap::default(),
+            action_result_types: FnvMap::default(),
+            types: FnvMap::default(),
+        }
     }
 
-    fn install_builtin_types(&mut self) {
-        for name in BUILTINS {
-            self.types.insert((*name).to_string(), TypeKind::Builtin);
-        }
-        self.types.insert(
-            "extended_asset".into(),
-            TypeKind::Struct(vec![
-                FieldDef {
-                    name: "quantity".into(),
-                    type_name: "asset".into(),
-                },
-                FieldDef {
-                    name: "contract".into(),
-                    type_name: "name".into(),
-                },
-            ].into()),
-        );
+    /// Resolve a type name against this ABI's own types, falling back to the
+    /// shared builtin table. Replaces cloning all builtins into every `Abi`.
+    fn known(&self, name: &str) -> Option<TypeKind> {
+        self.types
+            .get(name)
+            .or_else(|| builtin_types().get(name))
+            .cloned()
     }
 
     pub(crate) fn from_def(def: &AbiDef) -> Result<Self, String> {
@@ -74,20 +97,24 @@ impl Abi {
                 .iter()
                 .map(|r| (r.name, r.result_type.clone()))
                 .collect(),
-            types: BTreeMap::new(),
+            // Only ABI-defined and compound types; builtins resolve via the
+            // shared static (see `known`). Pre-sized to avoid rehashing.
+            types: fnv_map_with_capacity(
+                def.types.len() + def.structs.len() + def.variants.len(),
+            ),
         };
-        abi.install_builtin_types();
         for t in &def.types {
             if t.new_type_name.is_empty() {
                 return Err("Missing name".into());
             }
-            if abi
-                .types
-                .insert(
-                    t.new_type_name.clone(),
-                    TypeKind::Alias(t.type_name.clone()),
-                )
-                .is_some()
+            if builtin_types().contains_key(&*t.new_type_name)
+                || abi
+                    .types
+                    .insert(
+                        t.new_type_name.clone(),
+                        TypeKind::Alias(t.type_name.clone()),
+                    )
+                    .is_some()
             {
                 return Err("Redefined type".into());
             }
@@ -96,10 +123,11 @@ impl Abi {
             if s.name.is_empty() {
                 return Err("Missing name".into());
             }
-            if abi
-                .types
-                .insert(s.name.clone(), TypeKind::Struct(Vec::new().into()))
-                .is_some()
+            if builtin_types().contains_key(&*s.name)
+                || abi
+                    .types
+                    .insert(s.name.clone(), TypeKind::Struct(Vec::new().into()))
+                    .is_some()
             {
                 return Err("Redefined type".into());
             }
@@ -108,35 +136,41 @@ impl Abi {
             if v.name.is_empty() {
                 return Err("Missing name".into());
             }
-            if abi
-                .types
-                .insert(v.name.clone(), TypeKind::Variant(v.types.clone().into()))
-                .is_some()
+            if builtin_types().contains_key(&*v.name)
+                || abi
+                    .types
+                    .insert(v.name.clone(), TypeKind::Variant(v.types.clone()))
+                    .is_some()
             {
                 return Err("Redefined type".into());
             }
         }
-        let structs: BTreeMap<_, _> = def
-            .structs
-            .iter()
-            .map(|s| (s.name.clone(), s.clone()))
-            .collect();
-        let names: Vec<String> = structs.keys().cloned().collect();
+        let mut structs: FnvMap<IStr, &StructDef> =
+            fnv_map_with_capacity(def.structs.len());
+        for s in &def.structs {
+            structs.insert(s.name.clone(), s);
+        }
+        // Sort so resolution order (and therefore the first error surfaced for
+        // a malformed ABI) is deterministic and identical to the previous
+        // ordered-map behavior, preserving `check_error` parity with C++.
+        let mut names: Vec<IStr> = structs.keys().cloned().collect();
+        names.sort_unstable();
         for name in names {
             let fields = abi.resolve_struct_fields(&structs, &name, 0)?;
             abi.types.insert(name, TypeKind::Struct(fields.into()));
         }
         for s in &def.structs {
-            for f in &s.fields {
+            for f in s.fields.iter() {
                 abi.ensure_type(&f.type_name, 0)?;
             }
         }
         for v in &def.variants {
-            for t in &v.types {
+            for t in v.types.iter() {
                 abi.ensure_type(t, 0)?;
             }
         }
-        let all_names: Vec<String> = abi.types.keys().cloned().collect();
+        let mut all_names: Vec<IStr> = abi.types.keys().cloned().collect();
+        all_names.sort_unstable();
         for name in all_names {
             abi.ensure_type(&name, 0)?;
         }
@@ -145,7 +179,7 @@ impl Abi {
 
     fn resolve_struct_fields(
         &mut self,
-        structs: &BTreeMap<String, StructDef>,
+        structs: &FnvMap<IStr, &StructDef>,
         name: &str,
         depth: usize,
     ) -> Result<Vec<FieldDef>, String> {
@@ -166,7 +200,7 @@ impl Abi {
                 }
             }
         }
-        fields.extend(s.fields.clone());
+        fields.extend(s.fields.iter().cloned());
         Ok(fields)
     }
 
@@ -174,7 +208,7 @@ impl Abi {
         if depth >= 32 {
             return Err("Recursion limit reached".into());
         }
-        if let Some(kind) = self.types.get(name).cloned() {
+        if let Some(kind) = self.known(name) {
             if let TypeKind::Alias(target) = kind {
                 let resolved = self.ensure_type(&target, depth + 1)?;
                 if matches!(resolved, TypeKind::Extension(_)) {
@@ -189,19 +223,19 @@ impl Abi {
             if matches!(base_kind, TypeKind::Optional(_) | TypeKind::Extension(_)) {
                 return Err(format!("Invalid optional nesting for type: {}", name));
             }
-            TypeKind::Optional(base.to_string())
+            TypeKind::Optional(IStr::from(base))
         } else if let Some(base) = name.strip_suffix("[]") {
             let base_kind = self.ensure_type(base, depth + 1)?;
             if matches!(base_kind, TypeKind::Optional(_) | TypeKind::Extension(_)) {
                 return Err(format!("Invalid array nesting for type: {}", name));
             }
-            TypeKind::Array(base.to_string())
+            TypeKind::Array(IStr::from(base))
         } else if let Some(base) = name.strip_suffix('$') {
             let base_kind = self.ensure_type(base, depth + 1)?;
             if matches!(base_kind, TypeKind::Extension(_)) {
                 return Err(format!("Invalid extension nesting for type: {}", name));
             }
-            TypeKind::Extension(base.to_string())
+            TypeKind::Extension(IStr::from(base))
         } else if name.ends_with(']') {
             let idx = name.rfind('[').ok_or_else(|| {
                 "']' character found without matching '[' in type specification".to_string()
@@ -229,11 +263,11 @@ impl Abi {
             if matches!(base_kind, TypeKind::Optional(_) | TypeKind::Extension(_)) {
                 return Err(format!("Invalid array nesting for type: {}", name));
             }
-            TypeKind::FixedArray(base.to_string(), size as usize)
+            TypeKind::FixedArray(IStr::from(base), size as usize)
         } else {
             return Err(format!("unknown type \"{}\"", name));
         };
-        self.types.insert(name.to_string(), kind.clone());
+        self.types.insert(IStr::from(name), kind.clone());
         Ok(kind)
     }
 
@@ -340,7 +374,7 @@ impl Abi {
                 let variant_type = arr[0].as_str_like()?;
                 let idx = types
                     .iter()
-                    .position(|t| t == variant_type)
+                    .position(|t| &**t == variant_type)
                     .ok_or_else(|| "Invalid type for variant".to_string())?;
                 w.varuint32(idx as u32);
                 self.write_json_value(
@@ -372,9 +406,9 @@ impl Abi {
                 // Use reverse search to match C++ std::map last-wins behavior
                 // for duplicate keys: RapidJSON feeds keys into std::map which
                 // overwrites previous entries, effectively keeping the last value.
-                obj.iter().rev().find(|(k, _)| k == &field.name)
+                obj.iter().rev().find(|(k, _)| k.as_ref() == &*field.name)
             } else {
-                obj.get(idx).filter(|(k, _)| k == &field.name)
+                obj.get(idx).filter(|(k, _)| k.as_ref() == &*field.name)
             };
             let Some((_, field_value)) = found else {
                 if matches!(
@@ -390,7 +424,7 @@ impl Abi {
             if skipped {
                 return Err("Unexpected field".into());
             }
-            seen.insert(field.name.as_str());
+            seen.insert(field.name.as_ref());
             let field_allow = allow_extensions && idx + 1 == fields.len();
             self.write_json_value(
                 &field.type_name,

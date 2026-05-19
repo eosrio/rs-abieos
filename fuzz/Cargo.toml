@@ -1,0 +1,62 @@
+# Coverage-guided fuzzing harness (cargo-fuzz / libFuzzer).
+#
+# This is a SEPARATE package with its own [workspace] table so it is fully
+# decoupled from the parent crate: stable `cargo build` / `cargo test` at the
+# repo root never touch it. It requires a nightly toolchain and cargo-fuzz:
+#
+#   rustup toolchain install nightly
+#   cargo install cargo-fuzz
+#   cargo +nightly fuzz run fuzz_abi_bin_to_json
+#
+# See ../FUZZING.md for the full workflow and CI policy.
+
+[package]
+name = "rs_abieos-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.rs_abieos]
+path = ".."
+default-features = false
+features = ["rust-backend"]
+
+# Keep debug info for actionable crash backtraces without losing fuzz speed.
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "fuzz_json_to_bin"
+path = "fuzz_targets/fuzz_json_to_bin.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_bin_to_json"
+path = "fuzz_targets/fuzz_bin_to_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_abi_json_to_bin"
+path = "fuzz_targets/fuzz_abi_json_to_bin.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_abi_bin_to_json"
+path = "fuzz_targets/fuzz_abi_bin_to_json.rs"
+test = false
+doc = false
+bench = false

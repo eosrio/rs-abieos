@@ -4,3 +4,9 @@ build
 .idea
 .claude/
 !target/doc
+
+# cargo-fuzz build/output (fuzz/Cargo.lock is committed for reproducibility)
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/fuzz/coverage

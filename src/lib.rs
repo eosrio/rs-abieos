@@ -237,10 +237,8 @@ impl Abieos {
         if name.len() > 13 {
             return Err(AbieosError::NameTooLong);
         }
-        unsafe {
-            let c_buf = CString::new(name.as_bytes()).unwrap();
-            Ok(abieos_string_to_name(ctx, c_buf.as_ptr()))
-        }
+        let c_buf = CString::new(name.as_bytes()).map_err(|_| AbieosError::StringToName)?;
+        unsafe { Ok(abieos_string_to_name(ctx, c_buf.as_ptr())) }
     }
 
     /// Convert a C-string into an u64 native name
@@ -294,7 +292,8 @@ impl Abieos {
     pub fn set_abi_json(&self, contract: &str, abi_json: &str) -> Result<bool, AbieosError> {
         match self.string_to_name(contract) {
             Ok(contract_u64) => unsafe {
-                let abi_content_cs = CString::new(abi_json).unwrap();
+                let abi_content_cs = CString::new(abi_json)
+                    .map_err(|_| AbieosError::SetAbi("interior NUL byte in input".into()))?;
                 match abieos_set_abi(self.ctx(), contract_u64, abi_content_cs.as_ptr()) {
                     1 => Ok(true),
                     _ => Err(AbieosError::SetAbi(self.get_error())),
@@ -323,7 +322,8 @@ impl Abieos {
         contract_u64: u64,
         abi_json: &str,
     ) -> Result<bool, AbieosError> {
-        let abi_content_cs = CString::new(abi_json).unwrap();
+        let abi_content_cs = CString::new(abi_json)
+            .map_err(|_| AbieosError::SetAbi("interior NUL byte in input".into()))?;
         unsafe {
             match abieos_set_abi(self.ctx(), contract_u64, abi_content_cs.as_ptr()) {
                 1 => Ok(true),
@@ -334,7 +334,8 @@ impl Abieos {
 
     /// Load a contract ABI to memory (HEX format)
     pub fn set_abi_hex(&self, contract: &str, abi_hex: &str) -> Result<bool, AbieosError> {
-        let abi_hex_cs = CString::new(abi_hex).unwrap();
+        let abi_hex_cs = CString::new(abi_hex)
+            .map_err(|_| AbieosError::SetAbi("interior NUL byte in input".into()))?;
         match self.string_to_name(contract) {
             Ok(contract_u64) => unsafe {
                 match abieos_set_abi_hex(self.ctx(), contract_u64, abi_hex_cs.as_ptr()) {
@@ -348,7 +349,8 @@ impl Abieos {
 
     /// Load a contract ABI to memory (HEX format, u64 contract name)
     pub fn set_abi_hex_native(&self, contract: u64, abi_hex: &str) -> Result<bool, AbieosError> {
-        let abi_hex_cs = CString::new(abi_hex).unwrap();
+        let abi_hex_cs = CString::new(abi_hex)
+            .map_err(|_| AbieosError::SetAbi("interior NUL byte in input".into()))?;
         unsafe {
             match abieos_set_abi_hex(self.ctx(), contract, abi_hex_cs.as_ptr()) {
                 1 => Ok(true),
@@ -394,8 +396,10 @@ impl Abieos {
         let ctx = self.ctx();
         let account = self.string_to_name(account)?;
 
-        let datatype = CString::new(datatype).unwrap();
-        let json = CString::new(json).unwrap();
+        let datatype = CString::new(datatype)
+            .map_err(|_| AbieosError::JsonToHex("interior NUL byte in input".into()))?;
+        let json = CString::new(json)
+            .map_err(|_| AbieosError::JsonToHex("interior NUL byte in input".into()))?;
         unsafe {
             match abieos_json_to_bin_reorderable(ctx, account, datatype.as_ptr(), json.as_ptr()) {
                 1 => {
@@ -444,8 +448,10 @@ impl Abieos {
         json: &str,
     ) -> Result<String, AbieosError> {
         let ctx = self.ctx();
-        let datatype = CString::new(datatype).unwrap();
-        let json = CString::new(json).unwrap();
+        let datatype = CString::new(datatype)
+            .map_err(|_| AbieosError::JsonToHex("interior NUL byte in input".into()))?;
+        let json = CString::new(json)
+            .map_err(|_| AbieosError::JsonToHex("interior NUL byte in input".into()))?;
         unsafe {
             match abieos_json_to_bin_reorderable(ctx, account, datatype.as_ptr(), json.as_ptr()) {
                 1 => {
@@ -466,8 +472,10 @@ impl Abieos {
     ) -> Result<Vec<u8>, AbieosError> {
         let ctx = self.ctx();
         let account = self.string_to_name(account)?;
-        let datatype = CString::new(datatype).unwrap();
-        let json = CString::new(json).unwrap();
+        let datatype = CString::new(datatype)
+            .map_err(|_| AbieosError::JsonToBin("interior NUL byte in input".into()))?;
+        let json = CString::new(json)
+            .map_err(|_| AbieosError::JsonToBin("interior NUL byte in input".into()))?;
         unsafe {
             match abieos_json_to_bin_reorderable(ctx, account, datatype.as_ptr(), json.as_ptr()) {
                 1 => {
@@ -493,8 +501,10 @@ impl Abieos {
         let ctx = self.ctx();
         let account = self.string_to_name(account)?;
 
-        let datatype = CString::new(datatype).unwrap();
-        let hex = CString::new(hex).unwrap();
+        let datatype = CString::new(datatype)
+            .map_err(|_| AbieosError::HexToJson("interior NUL byte in input".into()))?;
+        let hex = CString::new(hex)
+            .map_err(|_| AbieosError::HexToJson("interior NUL byte in input".into()))?;
         unsafe {
             let p = abieos_hex_to_json(ctx, account, datatype.as_ptr(), hex.as_ptr());
             if p.is_null() {
@@ -538,7 +548,8 @@ impl Abieos {
     ) -> Result<String, AbieosError> {
         let ctx = self.ctx();
         let account = self.string_to_name(account)?;
-        let datatype = CString::new(datatype).unwrap();
+        let datatype = CString::new(datatype)
+            .map_err(|_| AbieosError::BinToJson("interior NUL byte in input".into()))?;
         let bin_data: *const c_char = bin.as_ptr() as *const c_char;
         let bin_size: usize = bin.len();
         unsafe {
@@ -559,8 +570,10 @@ impl Abieos {
         hex: &str,
     ) -> Result<String, AbieosError> {
         let ctx = self.ctx();
-        let datatype = CString::new(datatype).unwrap();
-        let hex = CString::new(hex).unwrap();
+        let datatype = CString::new(datatype)
+            .map_err(|_| AbieosError::HexToJson("interior NUL byte in input".into()))?;
+        let hex = CString::new(hex)
+            .map_err(|_| AbieosError::HexToJson("interior NUL byte in input".into()))?;
         unsafe {
             let p = abieos_hex_to_json(ctx, account, datatype.as_ptr(), hex.as_ptr());
             if p.is_null() {
@@ -668,7 +681,8 @@ impl Abieos {
     /// Convert ABI JSON to binary
     pub fn abi_json_to_bin(&self, json: &str) -> Result<Vec<u8>, AbieosError> {
         let ctx = self.ctx();
-        let abi_json: CString = CString::new(json).unwrap();
+        let abi_json: CString = CString::new(json)
+            .map_err(|_| AbieosError::AbiJsonToBin("interior NUL byte in input".into()))?;
         unsafe {
             match abieos_abi_json_to_bin(ctx, abi_json.as_ptr()) {
                 1 => {

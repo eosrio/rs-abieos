@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   built-in scalar conversions.
 - CI gates for the pure-Rust backend on Linux, macOS, and Windows MSVC, plus a
   Linux differential job that runs the Rust backend against the C++ oracle.
+- Dependency-free seeded property/fuzz suite
+  (`tests/rust_backend_fuzz_property.rs`) covering no-panic robustness,
+  round-trip stability, recursion limits, and duplicate/ordered fields, plus a
+  nightly cargo-fuzz harness (`fuzz/`), a per-push `fuzz-smoke` CI job, and a
+  scheduled deep-fuzz workflow. See `FUZZING.md`.
 
 ### Changed
 - `build.rs` skips bindgen and C++ compilation when `cpp-backend` is not
@@ -39,6 +44,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   C++ behavior for ABIs where derived structs sort before their base structs.
 - Rust backend contract `0` now uses a loaded ABI when present and falls back to
   the built-in type namespace only when no ABI is loaded there.
+
+### Fixed
+- Public API no longer panics when a caller-supplied string (JSON, datatype,
+  hex, ABI, or name) contains an interior NUL byte. All `CString::new(...)`
+  sites in the safe wrapper now return the function's existing `AbieosError`
+  variant instead of `unwrap()`-panicking the process (no public enum change).
+
+### Security
+- Fixed an unbounded-allocation abort in the Rust backend: a crafted ABI
+  binary whose vector length field declared a huge element count made
+  `abi_bin_to_json` pre-allocate gigabytes (observed: a ~182 GiB request that
+  aborted via `SIGABRT`) before validating any data. The pre-allocation is now
+  bounded by the bytes remaining in the input, so malformed lengths fail fast
+  with an error. Both issues were found by the new fuzz suite.
 
 ## [0.4.0] - 2026-05-17
 
