@@ -62,15 +62,52 @@ mod rust_backend_type_spec_error_port {
                 json: "[]",
                 contains: &["Leading zeros not allowed"],
             },
+            Case {
+                label: "plus-sign fixed-array size",
+                ty: "int8[+5]",
+                json: "[]",
+                contains: &["Unexpected size specification"],
+            },
+            Case {
+                label: "optional inside array nesting",
+                ty: "int8?[]",
+                json: "[]",
+                contains: &["Invalid array nesting"],
+            },
+            Case {
+                label: "optional inside fixed-array nesting",
+                ty: "int8?[1]",
+                json: "[]",
+                contains: &["Invalid array nesting"],
+            },
+            Case {
+                label: "binary extension inside optional nesting",
+                ty: "int8$?",
+                json: "null",
+                contains: &["Invalid optional nesting"],
+            },
+            Case {
+                label: "binary extension inside array nesting",
+                ty: "int8$[]",
+                json: "[]",
+                contains: &["Invalid array nesting"],
+            },
+            Case {
+                label: "binary extension inside fixed-array nesting",
+                ty: "int8$[11]",
+                json: "[]",
+                contains: &["Invalid array nesting"],
+            },
+            Case {
+                label: "nested binary extension",
+                ty: "int8$$",
+                json: "0",
+                contains: &["Invalid extension nesting"],
+            },
         ] {
             let err = err_string(abieos.json_to_hex_native(0, case.ty, case.json), case.label);
             assert_contains_all(&err, case.contains, case.label);
         }
-
-        // TODO: C++ rejects `int8[+5]` as an unexpected fixed-array size.
-        // Rust currently parses `+5` as a valid signed integer, so a valid
-        // five-element JSON array succeeds instead of producing a type-spec
-        // parser error.
     }
 
     #[test]
@@ -92,17 +129,29 @@ mod rust_backend_type_spec_error_port {
         assert_contains_all(&err, &["unknown type", "fee"], "unknown type");
     }
 
-    // TODO: The C++ check_error block rejects these malformed nested modifier
-    // combinations during type-spec parsing:
-    //
-    // - optional plus array/fixed-array nesting: `int8?[]`, `int8[]?`,
-    //   `int8?[1]`, `int8[1]?`
-    // - binary extension inside optional/array/fixed-array: `int8$?`,
-    //   `int8$[]`, `int8$[11]`
-    // - nested binary extension: `int8$$`
-    //
-    // The Rust backend currently accepts those type specs when paired with
-    // valid JSON values, so this port keeps them documented here instead of
-    // weakening the suite with assertions against unrelated JSON or shape
-    // errors.
+    #[test]
+    fn rust_backend_ports_extension_typedef_error() {
+        let abieos = Abieos::new();
+        let bad_abi = r#"{
+            "version": "eosio::abi/1.0",
+            "types": [
+                {
+                    "new_type_name": "my_alias",
+                    "type": "int8$"
+                }
+            ],
+            "structs": [],
+            "actions": [],
+            "tables": [],
+            "ricardian_clauses": [],
+            "error_messages": [],
+            "abi_extensions": [],
+            "variants": []
+        }"#;
+        let err = abieos.set_abi_json("bad", bad_abi).unwrap_err().to_string();
+        assert!(
+            err.contains("Extension typedef not allowed"),
+            "expected extension typedef error, got {err}"
+        );
+    }
 }

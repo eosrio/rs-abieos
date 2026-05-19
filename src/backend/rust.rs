@@ -1252,6 +1252,20 @@ impl Abi {
             let fields = abi.resolve_struct_fields(&structs, &name, 0)?;
             abi.types.insert(name, TypeKind::Struct(fields));
         }
+        for s in &def.structs {
+            for f in &s.fields {
+                abi.ensure_type(&f.type_name, 0)?;
+            }
+        }
+        for v in &def.variants {
+            for t in &v.types {
+                abi.ensure_type(t, 0)?;
+            }
+        }
+        let all_names: Vec<String> = abi.types.keys().cloned().collect();
+        for name in all_names {
+            abi.ensure_type(&name, 0)?;
+        }
         Ok(abi)
     }
 
@@ -1288,24 +1302,40 @@ impl Abi {
         }
         if let Some(kind) = self.types.get(name).cloned() {
             if let TypeKind::Alias(target) = kind {
-                return self.ensure_type(&target, depth + 1);
+                let resolved = self.ensure_type(&target, depth + 1)?;
+                if matches!(resolved, TypeKind::Extension(_)) {
+                    return Err("Extension typedef not allowed".into());
+                }
+                return Ok(resolved);
             }
             return Ok(kind);
         }
         let kind = if let Some(base) = name.strip_suffix('?') {
-            self.ensure_type(base, depth + 1)?;
+            let base_kind = self.ensure_type(base, depth + 1)?;
+            if matches!(base_kind, TypeKind::Optional(_) | TypeKind::Extension(_)) {
+                return Err(format!("Invalid optional nesting for type: {}", name));
+            }
             TypeKind::Optional(base.to_string())
         } else if let Some(base) = name.strip_suffix("[]") {
-            self.ensure_type(base, depth + 1)?;
+            let base_kind = self.ensure_type(base, depth + 1)?;
+            if matches!(base_kind, TypeKind::Optional(_) | TypeKind::Extension(_)) {
+                return Err(format!("Invalid array nesting for type: {}", name));
+            }
             TypeKind::Array(base.to_string())
         } else if let Some(base) = name.strip_suffix('$') {
-            self.ensure_type(base, depth + 1)?;
+            let base_kind = self.ensure_type(base, depth + 1)?;
+            if matches!(base_kind, TypeKind::Extension(_)) {
+                return Err(format!("Invalid extension nesting for type: {}", name));
+            }
             TypeKind::Extension(base.to_string())
         } else if name.ends_with(']') {
             let idx = name.rfind('[').ok_or_else(|| {
                 "']' character found without matching '[' in type specification".to_string()
             })?;
             let size_text = &name[idx + 1..name.len() - 1];
+            if size_text.starts_with('+') {
+                return Err("Unexpected size specification for fixed array type".into());
+            }
             if size_text.starts_with('0') && size_text.len() > 1 {
                 return Err(
                     "Leading zeros not allowed for fixed array lengrh specification".into(),
@@ -1321,7 +1351,10 @@ impl Abi {
                 return Err("Negative size fixed arrays not allowed".into());
             }
             let base = &name[..idx];
-            self.ensure_type(base, depth + 1)?;
+            let base_kind = self.ensure_type(base, depth + 1)?;
+            if matches!(base_kind, TypeKind::Optional(_) | TypeKind::Extension(_)) {
+                return Err(format!("Invalid array nesting for type: {}", name));
+            }
             TypeKind::FixedArray(base.to_string(), size as usize)
         } else {
             return Err(format!("unknown type \"{}\"", name));

@@ -129,13 +129,13 @@ maintainability.
   - built-in namespace when no ABI is loaded
   - loaded ABI when contract `0` has an ABI
   - built-ins still available through loaded contract `0`
-- `[~]` Exhaustively port C++ type-spec parser error cases:
-  - `[ ]` nested optional/array invalid combinations
-  - `[ ]` extension nesting invalid combinations
+- `[x]` Exhaustively port C++ type-spec parser error cases:
+  - `[x]` nested optional/array invalid combinations
+  - `[x]` extension nesting invalid combinations
   - `[x]` malformed fixed-array syntax
   - `[x]` recursion limit
   - `[x]` unknown types
-- `[ ]` Add ABI validation parity for:
+- `[x]` Add ABI validation parity for:
   - missing type names
   - duplicate type names
   - duplicate structs
