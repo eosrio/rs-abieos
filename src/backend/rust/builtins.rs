@@ -55,7 +55,7 @@ fn parse_int_strict(s: &str) -> Result<i128, String> {
     if s.is_empty() {
         return Err("Expected integer".into());
     }
-    let mut bytes = s.bytes();
+    let bytes = s.bytes();
     let mut negative = false;
     let mut first = true;
     let mut uval = 0u128;
@@ -69,9 +69,10 @@ fn parse_int_strict(s: &str) -> Result<i128, String> {
                 continue;
             }
         }
-        if b >= b'0' && b <= b'9' {
+        if b.is_ascii_digit() {
             let digit = (b - b'0') as u128;
-            uval = uval.checked_mul(10)
+            uval = uval
+                .checked_mul(10)
                 .and_then(|v| v.checked_add(digit))
                 .ok_or_else(|| "number is out of range".to_string())?;
             found_digit = true;
@@ -108,9 +109,10 @@ fn parse_uint_strict(s: &str) -> Result<u128, String> {
     let mut uval = 0u128;
     let mut found_digit = false;
     for b in s.bytes() {
-        if b >= b'0' && b <= b'9' {
+        if b.is_ascii_digit() {
             let digit = (b - b'0') as u128;
-            uval = uval.checked_mul(10)
+            uval = uval
+                .checked_mul(10)
                 .and_then(|v| v.checked_add(digit))
                 .ok_or_else(|| "number is out of range".to_string())?;
             found_digit = true;
@@ -254,15 +256,22 @@ pub(crate) fn write_builtin(type_name: &str, value: &Json, w: &mut Writer) -> Re
             Ok(())
         }
         "symbol_code" => {
-            w.u64(string_to_symbol_code(value.as_str_like()?).map_err(|_| "Expected symbol code".to_string())?);
+            w.u64(
+                string_to_symbol_code(value.as_str_like()?)
+                    .map_err(|_| "Expected symbol code".to_string())?,
+            );
             Ok(())
         }
         "symbol" => {
-            w.u64(string_to_symbol(value.as_str_like()?).map_err(|_| "Expected symbol".to_string())?);
+            w.u64(
+                string_to_symbol(value.as_str_like()?)
+                    .map_err(|_| "Expected symbol".to_string())?,
+            );
             Ok(())
         }
         "asset" => {
-            let (amount, symbol) = string_to_asset(value.as_str_like()?).map_err(|_| "Expected symbol code".to_string())?;
+            let (amount, symbol) = string_to_asset(value.as_str_like()?)
+                .map_err(|_| "Expected symbol code".to_string())?;
             w.i64(amount);
             w.u64(symbol);
             Ok(())
@@ -373,7 +382,11 @@ fn expand_exponent_float(s: &str) -> Option<String> {
     Some(out)
 }
 
-pub(crate) fn read_builtin(type_name: &str, r: &mut Reader, out: &mut String) -> Result<(), String> {
+pub(crate) fn read_builtin(
+    type_name: &str,
+    r: &mut Reader,
+    out: &mut String,
+) -> Result<(), String> {
     match type_name {
         "bool" => out.push_str(if r.byte()? != 0 { "true" } else { "false" }),
         "int8" => out.push_str(&(r.byte()? as i8).to_string()),
@@ -416,7 +429,7 @@ pub(crate) fn read_builtin(type_name: &str, r: &mut Reader, out: &mut String) ->
         }
         "bitset" => {
             let bits = r.varuint32()? as usize;
-            let byte_len = (bits + 7) / 8;
+            let byte_len = bits.div_ceil(8);
             quote_json(&bitset_to_string(bits, r.read(byte_len)?), out);
         }
         "public_key" => quote_json(&read_key_like(r, KeyKind::Public)?, out),

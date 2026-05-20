@@ -166,7 +166,8 @@ impl AbiDef {
                         name: r.istr()?,
                         type_name: r.istr()?,
                     })
-                })?.into(),
+                })?
+                .into(),
             })
         })?;
         def.actions = read_vec(r, |r| {
@@ -368,7 +369,12 @@ impl AbiDef {
                 json_array(out, self.variants.iter(), |out, v| {
                     out.push('{');
                     json_kv(out, "name", |out| quote_json(&v.name, out), false);
-                    json_kv(out, "types", |out| json_string_arc_array(out, &v.types), true);
+                    json_kv(
+                        out,
+                        "types",
+                        |out| json_string_arc_array(out, &v.types),
+                        true,
+                    );
                     out.push('}');
                 })
             },

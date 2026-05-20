@@ -439,16 +439,26 @@ mod rust_backend_parity {
         abieos.set_abi_json("testkv", testkv_abi).unwrap();
 
         // Test my_struct serialization/deserialization
-        let my_struct_json = r#"{"primary":"user1","foo":"hello","bar":123456,"fullname":"Igor Lins","age":30}"#;
-        let my_struct_expected = r#"{"primary":"user1","foo":"hello","bar":"123456","fullname":"Igor Lins","age":30}"#;
-        let my_struct_hex = abieos.json_to_hex("testkv", "my_struct", my_struct_json).unwrap();
-        let my_struct_back = abieos.hex_to_json("testkv", "my_struct", &my_struct_hex).unwrap();
+        let my_struct_json =
+            r#"{"primary":"user1","foo":"hello","bar":123456,"fullname":"Igor Lins","age":30}"#;
+        let my_struct_expected =
+            r#"{"primary":"user1","foo":"hello","bar":"123456","fullname":"Igor Lins","age":30}"#;
+        let my_struct_hex = abieos
+            .json_to_hex("testkv", "my_struct", my_struct_json)
+            .unwrap();
+        let my_struct_back = abieos
+            .hex_to_json("testkv", "my_struct", &my_struct_hex)
+            .unwrap();
         assert_eq!(my_struct_back, my_struct_expected);
 
         // Test tuple_string_uint32 serialization/deserialization
         let tuple_json = r#"{"field_0":"test","field_1":999}"#;
-        let tuple_hex = abieos.json_to_hex("testkv", "tuple_string_uint32", tuple_json).unwrap();
-        let tuple_back = abieos.hex_to_json("testkv", "tuple_string_uint32", &tuple_hex).unwrap();
+        let tuple_hex = abieos
+            .json_to_hex("testkv", "tuple_string_uint32", tuple_json)
+            .unwrap();
+        let tuple_back = abieos
+            .hex_to_json("testkv", "tuple_string_uint32", &tuple_hex)
+            .unwrap();
         assert_eq!(tuple_back, tuple_json);
 
         // 2. Load packed_transaction.abi.json
@@ -457,8 +467,12 @@ mod rust_backend_parity {
 
         // Test action serialization/deserialization
         let action_json = r#"{"account":"eosio.token","name":"transfer","authorization":[{"actor":"useraaaaaaaa","permission":"active"}],"data":"608C31C6187315D6"}"#;
-        let action_hex = abieos.json_to_hex("packed_tx", "action", action_json).unwrap();
-        let action_back = abieos.hex_to_json("packed_tx", "action", &action_hex).unwrap();
+        let action_hex = abieos
+            .json_to_hex("packed_tx", "action", action_json)
+            .unwrap();
+        let action_back = abieos
+            .hex_to_json("packed_tx", "action", &action_hex)
+            .unwrap();
         assert_eq!(action_back, action_json);
 
         // 3. Load ship.abi.json
@@ -467,9 +481,102 @@ mod rust_backend_parity {
 
         // Test block_position serialization/deserialization
         let block_pos_json = r#"{"block_num":1000,"block_id":"000003E800000000000000000000000000000000000000000000000000000000"}"#;
-        let block_pos_hex = abieos.json_to_hex("ship", "block_position", block_pos_json).unwrap();
-        let block_pos_back = abieos.hex_to_json("ship", "block_position", &block_pos_hex).unwrap();
+        let block_pos_hex = abieos
+            .json_to_hex("ship", "block_position", block_pos_json)
+            .unwrap();
+        let block_pos_back = abieos
+            .hex_to_json("ship", "block_position", &block_pos_hex)
+            .unwrap();
         assert_eq!(block_pos_back, block_pos_json);
     }
-}
 
+    #[test]
+    fn rust_backend_handles_cpp_complex_fixtures() {
+        let abieos = Abieos::new();
+
+        // Setup ABIs as in C++ test
+        let token_hex_abi = "0e656f73696f3a3a6162692f312e30010c6163636f756e745f6e616d65046e61\
+                             6d6505087472616e7366657200040466726f6d0c6163636f756e745f6e616d65\
+                             02746f0c6163636f756e745f6e616d65087175616e7469747905617373657404\
+                             6d656d6f06737472696e67066372656174650002066973737565720c6163636f\
+                             756e745f6e616d650e6d6178696d756d5f737570706c79056173736574056973\
+                             737565000302746f0c6163636f756e745f6e616d65087175616e746974790561\
+                             73736574046d656d6f06737472696e67076163636f756e7400010762616c616e\
+                             63650561737365740e63757272656e63795f7374617473000306737570706c79\
+                             0561737365740a6d61785f737570706c79056173736574066973737565720c61\
+                             63636f756e745f6e616d6503000000572d3ccdcd087472616e73666572000000\
+                             000000a531760569737375650000000000a86cd4450663726561746500020000\
+                             00384f4d113203693634010863757272656e6379010675696e74363407616363\
+                             6f756e740000000000904dc603693634010863757272656e6379010675696e74\
+                             36340e63757272656e63795f7374617473000000";
+
+        let transaction_abi = include_str!("../abis/transaction.abi.json");
+        let packed_tx_abi = include_str!("../abis/packed_transaction.abi.json");
+        let ship_abi = include_str!("../abis/ship.abi.json");
+
+        let token_name = abieos.string_to_name("eosio.token").unwrap();
+
+        abieos
+            .set_abi_hex_native(token_name, token_hex_abi)
+            .unwrap();
+        abieos.set_abi_json_native(0, transaction_abi).unwrap();
+        abieos.set_abi_json_native(1, packed_tx_abi).unwrap();
+        abieos.set_abi_json_native(2, ship_abi).unwrap();
+
+        // 1003: transfer
+        let transfer_json = r#"{"from":"useraaaaaaaa","to":"useraaaaaaab","quantity":"0.0001 SYS","memo":"test memo"}"#;
+        let hex = abieos
+            .json_to_hex_native(token_name, "transfer", transfer_json)
+            .unwrap();
+        let back = abieos
+            .hex_to_json_native(token_name, "transfer", &hex)
+            .unwrap();
+        assert_eq!(back, transfer_json);
+
+        // 1005: transaction
+        let transaction_json = r#"{"expiration":"2009-02-13T23:31:31.000","ref_block_num":1234,"ref_block_prefix":5678,"max_net_usage_words":0,"max_cpu_usage_ms":0,"delay_sec":0,"context_free_actions":[],"actions":[{"account":"eosio.token","name":"transfer","authorization":[{"actor":"useraaaaaaaa","permission":"active"}],"data":"608C31C6187315D6708C31C6187315D60100000000000000045359530000000000"}],"transaction_extensions":[]}"#;
+        let hex = abieos
+            .json_to_hex_native(0, "transaction", transaction_json)
+            .unwrap();
+        let back = abieos.hex_to_json_native(0, "transaction", &hex).unwrap();
+        assert_eq!(back, transaction_json);
+
+        // 1009: transfer reorder
+        let transfer_unorder = r#"{"to":"useraaaaaaab","memo":"test memo","from":"useraaaaaaaa","quantity":"0.0001 SYS"}"#;
+        let hex = abieos
+            .json_to_hex_native(token_name, "transfer", transfer_unorder)
+            .unwrap();
+        let back = abieos
+            .hex_to_json_native(token_name, "transfer", &hex)
+            .unwrap();
+        assert_eq!(back, transfer_json);
+
+        // 1013: transaction reorder
+        let transaction_unorder = r#"{"ref_block_num":1234,"ref_block_prefix":5678,"expiration":"2009-02-13T23:31:31.000","max_net_usage_words":0,"max_cpu_usage_ms":0,"delay_sec":0,"context_free_actions":[],"actions":[{"account":"eosio.token","name":"transfer","authorization":[{"actor":"useraaaaaaaa","permission":"active"}],"data":"608C31C6187315D6708C31C6187315D60100000000000000045359530000000000"}],"transaction_extensions":[]}"#;
+        let hex = abieos
+            .json_to_hex_native(0, "transaction", transaction_unorder)
+            .unwrap();
+        let back = abieos.hex_to_json_native(0, "transaction", &hex).unwrap();
+        assert_eq!(back, transaction_json);
+
+        // 1019: packed_transaction_v0
+        let packed_tx_json = r#"{"signatures":["SIG_K1_K5PGhrkUBkThs8zdTD9mGUJZvxL4eU46UjfYJSEdZ9PXS2Cgv5jAk57yTx4xnrdSocQm6DDvTaEJZi5WLBsoZC4XYNS8b3"],"compression":0,"packed_context_free_data":"","packed_trx":{"expiration":"2009-02-13T23:31:31.000","ref_block_num":1234,"ref_block_prefix":5678,"max_net_usage_words":0,"max_cpu_usage_ms":0,"delay_sec":0,"context_free_actions":[],"actions":[{"account":"eosio.token","name":"transfer","authorization":[{"actor":"useraaaaaaaa","permission":"active"}],"data":"608C31C6187315D6708C31C6187315D60100000000000000045359530000000000"}],"transaction_extensions":[]}}"#;
+        let hex = abieos
+            .json_to_hex_native(1, "packed_transaction_v0", packed_tx_json)
+            .unwrap();
+        let back = abieos
+            .hex_to_json_native(1, "packed_transaction_v0", &hex)
+            .unwrap();
+        assert_eq!(back, packed_tx_json);
+
+        // 1021: transaction_trace
+        let trace_json = r#"["transaction_trace_v0",{"id":"3098EA9476266BFA957C13FA73C26806D78753099CE8DEF2A650971F07595A69","status":0,"cpu_usage_us":2000,"net_usage_words":25,"elapsed":"194","net_usage":"200","scheduled":false,"action_traces":[["action_trace_v1",{"action_ordinal":1,"creator_action_ordinal":0,"receipt":["action_receipt_v0",{"receiver":"eosio","act_digest":"F2FDEEFF77EFC899EED23EE05F9469357A096DC3083D493571CF68A422C69EFE","global_sequence":"11","recv_sequence":"11","auth_sequence":[{"account":"eosio","sequence":"11"}],"code_sequence":2,"abi_sequence":0}],"receiver":"eosio","act":{"account":"eosio","name":"newaccount","authorization":[{"actor":"eosio","permission":"active"}],"data":"0000000000EA305500409406A888CCA501000000010002C0DED2BC1F1305FB0FAAC5E6C03EE3A1924234985427B6167CA569D13DF435CF0100000001000000010002C0DED2BC1F1305FB0FAAC5E6C03EE3A1924234985427B6167CA569D13DF435CF01000000"},"context_free":false,"elapsed":"83","console":"","account_ram_deltas":[{"account":"oracle.aml","delta":"2724"}],"except":null,"error_code":null,"return_value":""}]],"account_ram_delta":null,"except":null,"error_code":null,"failed_dtrx_trace":null,"partial":null}]"#;
+        let hex = abieos
+            .json_to_hex_native(2, "transaction_trace", trace_json)
+            .unwrap();
+        let back = abieos
+            .hex_to_json_native(2, "transaction_trace", &hex)
+            .unwrap();
+        assert_eq!(back, trace_json);
+    }
+}

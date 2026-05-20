@@ -31,22 +31,12 @@ pub type abieos_context = abieos_context_s;
 
 #[repr(C)]
 #[allow(non_camel_case_types)]
+#[derive(Default)]
 pub struct abieos_context_s {
     last_error: CString,
     result_str: Vec<u8>,
     result_bin: Vec<u8>,
     contracts: FnvMap<u64, Abi>,
-}
-
-impl Default for abieos_context_s {
-    fn default() -> Self {
-        Self {
-            last_error: CString::default(),
-            result_str: Vec::new(),
-            result_bin: Vec::new(),
-            contracts: FnvMap::default(),
-        }
-    }
 }
 
 fn cstring_lossy(s: &str) -> CString {
@@ -233,13 +223,17 @@ pub unsafe extern "C" fn abieos_get_type_for_action(
                 name_to_string_value(contract)
             )
         })?;
-        let ty = abi.action_types.get(&action).ok_or_else(|| {
-            format!(
-                "contract \"{}\" does not have action \"{}\"",
-                name_to_string_value(contract),
-                name_to_string_value(action)
-            )
-        })?.clone();
+        let ty = abi
+            .action_types
+            .get(&action)
+            .ok_or_else(|| {
+                format!(
+                    "contract \"{}\" does not have action \"{}\"",
+                    name_to_string_value(contract),
+                    name_to_string_value(action)
+                )
+            })?
+            .clone();
         Ok(set_result_str(ctx, &ty))
     })
 }
@@ -256,13 +250,17 @@ pub unsafe extern "C" fn abieos_get_type_for_table(
                 name_to_string_value(contract)
             )
         })?;
-        let ty = abi.table_types.get(&table).ok_or_else(|| {
-            format!(
-                "contract \"{}\" does not have table \"{}\"",
-                name_to_string_value(contract),
-                name_to_string_value(table)
-            )
-        })?.clone();
+        let ty = abi
+            .table_types
+            .get(&table)
+            .ok_or_else(|| {
+                format!(
+                    "contract \"{}\" does not have table \"{}\"",
+                    name_to_string_value(contract),
+                    name_to_string_value(table)
+                )
+            })?
+            .clone();
         Ok(set_result_str(ctx, &ty))
     })
 }
@@ -279,13 +277,17 @@ pub unsafe extern "C" fn abieos_get_type_for_action_result(
                 name_to_string_value(contract)
             )
         })?;
-        let ty = abi.action_result_types.get(&action_result).ok_or_else(|| {
-            format!(
-                "contract \"{}\" does not have action_result \"{}\"",
-                name_to_string_value(contract),
-                name_to_string_value(action_result)
-            )
-        })?.clone();
+        let ty = abi
+            .action_result_types
+            .get(&action_result)
+            .ok_or_else(|| {
+                format!(
+                    "contract \"{}\" does not have action_result \"{}\"",
+                    name_to_string_value(contract),
+                    name_to_string_value(action_result)
+                )
+            })?
+            .clone();
         Ok(set_result_str(ctx, &ty))
     })
 }
@@ -317,17 +319,22 @@ unsafe fn json_to_bin_impl(
 ) -> abieos_bool {
     let type_name = match cstr_arg_borrowed(type_) {
         Ok(t) => t,
-        Err(e) => return with_ctx(context, 0, |ctx| Err(e)),
+        Err(e) => return with_ctx(context, 0, |_| Err(e)),
     };
     let json_str = match cstr_arg_borrowed(json) {
         Ok(j) => j,
-        Err(e) => return with_ctx(context, 0, |ctx| Err(e)),
+        Err(e) => return with_ctx(context, 0, |_| Err(e)),
     };
     with_ctx(context, 0, |ctx| {
         if let Some(abi) = ctx.contracts.get_mut(&contract) {
             abi.json_to_bin(type_name, json_str, reorderable, &mut ctx.result_bin)?;
         } else if contract == 0 {
-            Abi::builtin_only().json_to_bin(type_name, json_str, reorderable, &mut ctx.result_bin)?;
+            Abi::builtin_only().json_to_bin(
+                type_name,
+                json_str,
+                reorderable,
+                &mut ctx.result_bin,
+            )?;
         } else {
             return Err(format!(
                 "contract \"{}\" is not loaded",
@@ -347,7 +354,7 @@ pub unsafe extern "C" fn abieos_bin_to_json(
 ) -> *const c_char {
     let type_name = match cstr_arg_borrowed(type_) {
         Ok(t) => t,
-        Err(e) => return with_ctx(context, std::ptr::null(), |ctx| Err(e)),
+        Err(e) => return with_ctx(context, std::ptr::null(), |_| Err(e)),
     };
     let bytes = bytes_arg(data, size);
     with_ctx(context, std::ptr::null(), |ctx| {
@@ -403,7 +410,7 @@ pub unsafe extern "C" fn abieos_abi_json_to_bin(
 ) -> abieos_bool {
     let json_str = match cstr_arg_borrowed(json) {
         Ok(j) => j,
-        Err(e) => return with_ctx(context, 0, |ctx| Err(e)),
+        Err(e) => return with_ctx(context, 0, |_| Err(e)),
     };
     with_ctx(context, 0, |ctx| {
         let def = AbiDef::from_json_str(json_str)?;

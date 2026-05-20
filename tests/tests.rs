@@ -1,3 +1,7 @@
+#![allow(clippy::bool_assert_comparison)]
+#![allow(clippy::needless_borrow)]
+#![allow(clippy::manual_c_str_literals)]
+
 #[cfg(test)]
 mod tests {
     use crate::samples::{

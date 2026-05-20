@@ -72,8 +72,7 @@ impl Rng {
     /// A random string biased towards JSON / ABI structural characters so the
     /// parsers are exercised on near-miss inputs, not just noise.
     fn junk_string(&mut self, max: usize) -> String {
-        const ALPHABET: &[u8] =
-            b"{}[]\":,.0123456789-+eEtruefalsn \t\n\\/abcdefABCDEF\0\x7f";
+        const ALPHABET: &[u8] = b"{}[]\":,.0123456789-+eEtruefalsn \t\n\\/abcdefABCDEF\0\x7f";
         let len = self.below(max + 1);
         (0..len)
             .map(|_| ALPHABET[self.below(ALPHABET.len())] as char)
@@ -218,8 +217,7 @@ fn fuzz_malformed_hex_no_panic() {
 #[test]
 fn fuzz_malformed_key_signature_no_panic() {
     fuzz("fuzz_malformed_key_signature_no_panic", |rng, _| {
-        const KEY_CHARS: &[u8] =
-            b"PUBKEYSIGabcdefghijklmnopqrstuvwxyz123456789_ 0OIl+/=";
+        const KEY_CHARS: &[u8] = b"PUBKEYSIGabcdefghijklmnopqrstuvwxyz123456789_ 0OIl+/=";
         let len = rng.below(120);
         let raw: String = (0..len)
             .map(|_| KEY_CHARS[rng.below(KEY_CHARS.len())] as char)
@@ -259,12 +257,38 @@ fn fuzz_malformed_asset_time_no_panic() {
 
 fn pick_type_name<'a>(rng: &mut Rng) -> &'a str {
     const TYPES: &[&str] = &[
-        "bool", "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64",
-        "uint64", "int128", "uint128", "varuint32", "varint32", "float32",
-        "float64", "float128", "time_point", "time_point_sec",
-        "block_timestamp_type", "name", "bytes", "string", "checksum160",
-        "checksum256", "checksum512", "symbol", "symbol_code", "asset",
-        "public_key", "signature", "not_a_real_type", "",
+        "bool",
+        "int8",
+        "uint8",
+        "int16",
+        "uint16",
+        "int32",
+        "uint32",
+        "int64",
+        "uint64",
+        "int128",
+        "uint128",
+        "varuint32",
+        "varint32",
+        "float32",
+        "float64",
+        "float128",
+        "time_point",
+        "time_point_sec",
+        "block_timestamp_type",
+        "name",
+        "bytes",
+        "string",
+        "checksum160",
+        "checksum256",
+        "checksum512",
+        "symbol",
+        "symbol_code",
+        "asset",
+        "public_key",
+        "signature",
+        "not_a_real_type",
+        "",
     ];
     TYPES[rng.below(TYPES.len())]
 }
@@ -291,15 +315,13 @@ fn valid_value(rng: &mut Rng, ty: &str) -> String {
             // Safe charset/length so no normalization perturbs the round-trip.
             const C: &[u8] = b"abcdefghijklmnopqrstuvwxyz12345";
             let len = 1 + rng.below(12);
-            let s: String =
-                (0..len).map(|_| C[rng.below(C.len())] as char).collect();
+            let s: String = (0..len).map(|_| C[rng.below(C.len())] as char).collect();
             format!("\"{s}\"")
         }
         "string" => {
             const C: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789 ";
             let len = rng.below(24);
-            let mut s: String =
-                (0..len).map(|_| C[rng.below(C.len())] as char).collect();
+            let mut s: String = (0..len).map(|_| C[rng.below(C.len())] as char).collect();
             if rng.bool() {
                 s.push('\u{2603}'); // non-ASCII preservation
             }
@@ -507,9 +529,7 @@ const DUP_ABI: &str = r#"{
 #[test]
 fn prop_duplicate_and_reordered_fields() {
     let abieos = Abieos::new();
-    abieos
-        .set_abi_json("test", DUP_ABI)
-        .expect("load DUP_ABI");
+    abieos.set_abi_json("test", DUP_ABI).expect("load DUP_ABI");
 
     // Canonical, ordered, single-key form.
     let canonical = r#"{"a":7,"b":"hello","c":255}"#;
@@ -523,11 +543,7 @@ fn prop_duplicate_and_reordered_fields() {
         let mut rng = Rng::new(base ^ (i as u64).wrapping_mul(0xA24B_AED4));
 
         // Shuffle the three keys.
-        let mut keys = [
-            ("a", "7"),
-            ("b", "\"hello\""),
-            ("c", "255"),
-        ];
+        let mut keys = [("a", "7"), ("b", "\"hello\""), ("c", "255")];
         for k in (1..keys.len()).rev() {
             keys.swap(k, rng.below(k + 1));
         }

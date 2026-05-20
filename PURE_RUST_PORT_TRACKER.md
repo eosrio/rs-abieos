@@ -423,18 +423,18 @@ Validated: full `rust-backend` + default `cpp-backend` suites pass; a
 - `[x]` Document Rust backend test command.
 - `[x]` Document C++ oracle test command.
 - `[x]` Document MSVC recommendation to use `rust-backend`.
-- `[ ]` Add architecture notes:
+- `[x]` Add architecture notes:
   - active backend router
   - C++ oracle role
   - result buffer ownership model
   - parity scope
-- `[ ]` Add migration guide for users:
+- `[x]` Add migration guide for users:
   - current default
   - opt into Rust backend
   - report parity mismatch
   - expected build requirements by feature
-- `[ ]` Add contributor guide for adding parity fixtures.
-- `[ ]` Add release checklist to README or this tracker.
+- `[x]` Add contributor guide for adding parity fixtures.
+- `[x]` Add release checklist to README or this tracker.
 
 ## Milestone 12: Default Flip Readiness
 

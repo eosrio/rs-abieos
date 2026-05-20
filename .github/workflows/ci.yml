@@ -5,13 +5,57 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  schedule:
+    # Daily at 02:00 UTC
+    - cron: "0 2 * * *"
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  lint-and-docs:
+    name: Lints, Docs, and Examples
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Run rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy (all features)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run clippy (Rust backend)
+        run: cargo clippy --all-targets --no-default-features --features rust-backend -- -D warnings
+
+      - name: Build docs (all features)
+        run: cargo doc --no-deps --all-features
+
+      - name: Build docs (Rust backend)
+        run: cargo doc --no-deps --no-default-features --features rust-backend
+
+      - name: Check feature-matrix combinations
+        run: |
+          # default (cpp-backend)
+          cargo check --all-targets
+          # cpp-oracle (runs both)
+          cargo check --all-targets --no-default-features --features "rust-backend cpp-oracle"
+
   test:
-    name: Test
+    name: Test (C++ backend, Ubuntu)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout with submodules
@@ -45,7 +89,7 @@ jobs:
         run: cargo test
 
   test-macos:
-    name: Test (macOS)
+    name: Test (C++ backend, macOS)
     runs-on: macos-latest
     steps:
       - name: Checkout with submodules
@@ -67,8 +111,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      # Xcode command-line tools (preinstalled on macos-latest) provide both
-      # the C++ toolchain and libclang for bindgen; no extra setup needed.
       - name: Build
         run: cargo build --release
 
@@ -76,7 +118,7 @@ jobs:
         run: cargo test
 
   test-windows:
-    name: Test (Windows, GNU)
+    name: Test (C++ backend, Windows GNU)
     runs-on: windows-latest
     env:
       CARGO_BUILD_TARGET: x86_64-pc-windows-gnu
@@ -89,11 +131,6 @@ jobs:
       - name: Set up MinGW-w64 and LLVM
         shell: pwsh
         run: |
-          # abieos relies on libstdc++/libc++ semantics (e.g. std::string_view
-          # iterators) that MSVC's STL does not provide, so it is built with
-          # MinGW-w64 g++ against the x86_64-pc-windows-gnu target. windows-latest
-          # ships MSYS2 (MinGW-w64, MSVCRT) at C:\msys64\mingw64 and LLVM at
-          # C:\Program Files\LLVM (libclang, required by bindgen).
           "C:\msys64\mingw64\bin"     | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
@@ -121,18 +158,26 @@ jobs:
         run: cargo test
 
   test-rust-backend:
-    name: Test Rust backend (${{ matrix.os }})
+    name: Test Rust backend (${{ matrix.os }}${{ matrix.target && format(' - {0}', matrix.target) || '' }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+          - os: macos-latest
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target || '' }}
 
       - name: Cache cargo registry & build
         uses: actions/cache@v4
@@ -141,12 +186,29 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-rust-backend-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.target || 'default' }}-rust-backend-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-rust-backend-cargo-
+            ${{ runner.os }}-${{ matrix.target || 'default' }}-rust-backend-cargo-
 
       - name: Run Rust backend tests
-        run: cargo test --no-default-features --features rust-backend
+        run: cargo test --no-default-features --features rust-backend ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+
+  check-targets:
+    name: Check additional targets (Rust backend)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-gnu]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Run cargo check
+        run: cargo check --no-default-features --features rust-backend --target ${{ matrix.target }}
 
   test-cpp-oracle:
     name: Test Rust backend against C++ oracle
@@ -200,10 +262,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-fuzz-smoke-cargo-
 
-      # Dependency-free seeded property/fuzz suite. A deeper iteration count
-      # than the default (400) is cheap here (~2s for 20k) and meaningfully
-      # widens the random-input surface on every push/PR. Coverage-guided
-      # deep fuzzing runs on a schedule (.github/workflows/fuzz.yml).
       - name: Run property/fuzz smoke (fixed seed)
         env:
           ABIEOS_FUZZ_ITERS: "20000"

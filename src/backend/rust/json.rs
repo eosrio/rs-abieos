@@ -63,10 +63,8 @@ impl<'a> JsonParser<'a> {
         // are mostly indentation).
         while i + 8 <= src.len() {
             let w = word_at(src, i);
-            let is_ws = hasvalue(w, b' ')
-                | hasvalue(w, b'\t')
-                | hasvalue(w, b'\n')
-                | hasvalue(w, b'\r');
+            let is_ws =
+                hasvalue(w, b' ') | hasvalue(w, b'\t') | hasvalue(w, b'\n') | hasvalue(w, b'\r');
             if is_ws & HI == HI {
                 i += 8;
             } else {
@@ -230,9 +228,7 @@ impl<'a> JsonParser<'a> {
                             self.depth -= 1;
                             return Ok(());
                         }
-                        _ => {
-                            return Err("Missing a comma or ']' after an array element".into())
-                        }
+                        _ => return Err("Missing a comma or ']' after an array element".into()),
                     }
                 }
             }
@@ -257,9 +253,7 @@ impl<'a> JsonParser<'a> {
                             self.depth -= 1;
                             return Ok(());
                         }
-                        _ => {
-                            return Err("Missing a comma or '}' after an object member".into())
-                        }
+                        _ => return Err("Missing a comma or '}' after an object member".into()),
                     }
                 }
             }

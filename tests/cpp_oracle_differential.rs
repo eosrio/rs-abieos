@@ -1,3 +1,5 @@
+#![allow(clippy::manual_is_multiple_of)]
+
 #[cfg(all(feature = "rust-backend", feature = "cpp-oracle"))]
 mod cpp_oracle_differential {
     use rs_abieos::{cpp_oracle, Abieos};
@@ -347,8 +349,10 @@ mod cpp_oracle_differential {
             assert_eq!(
                 result_status(&rust_hex),
                 result_status(&oracle_hex),
-                "json_to_hex status mismatch for {}",
-                row.label
+                "json_to_hex status mismatch for {}. Rust hex: {:?}, Oracle error: {:?}",
+                row.label,
+                rust_hex,
+                oracle.last_error()
             );
 
             match (rust_hex, oracle_hex, row.expected_json) {
@@ -433,8 +437,11 @@ mod cpp_oracle_differential {
     fn rust_backend_matches_cpp_oracle_for_builtin_codec_rows() {
         let rust = Abieos::new();
         let oracle = Oracle::new();
-        rust.set_abi_json_native(0, r#"{"version": "eosio::abi/1.1"}"#).unwrap();
-        oracle.set_abi_json(0, r#"{"version": "eosio::abi/1.1"}"#).unwrap();
+        rust.set_abi_json_native(0, r#"{"version": "eosio::abi/1.1"}"#)
+            .unwrap();
+        oracle
+            .set_abi_json(0, r#"{"version": "eosio::abi/1.1"}"#)
+            .unwrap();
 
         compare_codec_rows(
             &rust,
@@ -632,14 +639,70 @@ mod cpp_oracle_differential {
                 CodecRow::failure("uint64 with trailing char", 0, "uint64", r#""123a""#),
                 CodecRow::failure("float32 invalid string", 0, "float32", r#""abc""#),
                 CodecRow::failure("bytes invalid hex characters", 0, "bytes", r#""ZZ""#),
-                CodecRow::success("time_point civil date", 0, "time_point", r#""1970-01-01T00:00:00.000000""#, r#""1970-01-01T00:00:00.000""#),
-                CodecRow::success("time_point_sec civil date", 0, "time_point_sec", r#""1970-01-01T00:00:00""#, r#""1970-01-01T00:00:00.000""#),
-                CodecRow::failure("time_point invalid format", 0, "time_point", r#""1970-01-01""#),
-                CodecRow::failure("time_point_sec invalid format", 0, "time_point_sec", r#""1970-01-01 00:00:00""#),
-                CodecRow::success("asset without dot", 0, "asset", r#""10 SYS""#, r#""10 SYS""#),
+                CodecRow::success(
+                    "time_point civil date",
+                    0,
+                    "time_point",
+                    r#""1970-01-01T00:00:00.000000""#,
+                    r#""1970-01-01T00:00:00.000""#,
+                ),
+                CodecRow::success(
+                    "time_point_sec civil date",
+                    0,
+                    "time_point_sec",
+                    r#""1970-01-01T00:00:00""#,
+                    r#""1970-01-01T00:00:00.000""#,
+                ),
+                CodecRow::failure(
+                    "time_point invalid format",
+                    0,
+                    "time_point",
+                    r#""1970-01-01""#,
+                ),
+                CodecRow::failure(
+                    "time_point_sec invalid format",
+                    0,
+                    "time_point_sec",
+                    r#""1970-01-01 00:00:00""#,
+                ),
+                CodecRow::success(
+                    "asset without dot",
+                    0,
+                    "asset",
+                    r#""10 SYS""#,
+                    r#""10 SYS""#,
+                ),
                 CodecRow::success("negative asset", 0, "asset", r#""-10 SYS""#, r#""-10 SYS""#),
-                CodecRow::success("asset double spaces", 0, "asset", r#""10  SYS""#, r#""10 SYS""#),
+                CodecRow::success(
+                    "asset double spaces",
+                    0,
+                    "asset",
+                    r#""10  SYS""#,
+                    r#""10 SYS""#,
+                ),
                 CodecRow::failure("asset lowercase symbol", 0, "asset", r#""10.0000 sys""#),
+                CodecRow::success(
+                    "string with emoji",
+                    0,
+                    "string",
+                    r#""hello 🌞""#,
+                    r#""hello 🌞""#,
+                ),
+                CodecRow::success(
+                    "string with null",
+                    0,
+                    "string",
+                    r#""a\u0000b""#,
+                    r#""a\u0000b""#,
+                ),
+                CodecRow::success(
+                    "float64 large",
+                    0,
+                    "float64",
+                    "1.7976931348623157e+308",
+                    "1.7976931348623157e+308",
+                ),
+                CodecRow::success("float64 small", 0, "float64", "1e-307", "1e-307"),
             ],
         );
     }
@@ -805,7 +868,9 @@ mod cpp_oracle_differential {
         let packed_tx_contract = rust.string_to_name("packed.tx").unwrap();
         let packed_tx_abi = include_str!("../abis/packed_transaction.abi.json");
         rust.set_abi_json("packed.tx", packed_tx_abi).unwrap();
-        oracle.set_abi_json(packed_tx_contract, packed_tx_abi).unwrap();
+        oracle
+            .set_abi_json(packed_tx_contract, packed_tx_abi)
+            .unwrap();
 
         // 3. Load ship
         let ship_contract = rust.string_to_name("ship").unwrap();
@@ -849,7 +914,7 @@ mod cpp_oracle_differential {
                     r#"{"block_num":1000,"block_id":"000003E800000000000000000000000000000000000000000000000000000000"}"#,
                     r#"{"block_num":1000,"block_id":"000003E800000000000000000000000000000000000000000000000000000000"}"#,
                 ),
-            ]
+            ],
         );
     }
 
@@ -947,8 +1012,12 @@ mod cpp_oracle_differential {
 
         let fresh_rust = Abieos::new();
         let fresh_oracle = Oracle::new();
-        fresh_rust.set_abi_json_native(0, r#"{"version": "eosio::abi/1.1"}"#).unwrap();
-        fresh_oracle.set_abi_json(0, r#"{"version": "eosio::abi/1.1"}"#).unwrap();
+        fresh_rust
+            .set_abi_json_native(0, r#"{"version": "eosio::abi/1.1"}"#)
+            .unwrap();
+        fresh_oracle
+            .set_abi_json(0, r#"{"version": "eosio::abi/1.1"}"#)
+            .unwrap();
         assert_eq!(
             fresh_rust.json_to_hex_native(0, "uint8", "1").unwrap(),
             "01"
@@ -1024,12 +1093,7 @@ mod cpp_oracle_differential {
                 // Missing required field
                 CodecRow::failure("s5 missing all fields", contract, "s5", r#"{}"#),
                 CodecRow::failure("s5 missing x2 and x3", contract, "s5", r#"{"x1":1}"#),
-                CodecRow::failure(
-                    "s5 missing x3",
-                    contract,
-                    "s5",
-                    r#"{"x1":1,"x2":2}"#,
-                ),
+                CodecRow::failure("s5 missing x3", contract, "s5", r#"{"x1":1,"x2":2}"#),
                 // Not an object
                 CodecRow::failure("s1 rejects null", contract, "s1", "null"),
                 CodecRow::failure("s1 rejects array", contract, "s1", "[1]"),
@@ -1147,6 +1211,44 @@ mod cpp_oracle_differential {
                 result_status(&oracle_result),
                 "binary overrun status mismatch for {label}: rust={rust_result:?} oracle={oracle_result:?}"
             );
+        }
+    }
+    #[test]
+    fn rust_backend_matches_cpp_oracle_for_randomized_names() {
+        let rust = Abieos::new();
+        let oracle = Oracle::new();
+
+        let chars = ".12345abcdefghijklmnopqrstuvwxyz";
+        let mut seed = 12345u64;
+
+        for _ in 0..1000 {
+            let mut name = String::new();
+            let len = (seed % 14) as usize; // up to 13 chars
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+
+            for _ in 0..len {
+                let idx = (seed % (chars.len() as u64)) as usize;
+                name.push(chars.as_bytes()[idx] as char);
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            }
+
+            let rust_name = rust.string_to_name(&name);
+            let oracle_name = oracle.string_to_name(&name);
+
+            if let Ok(r) = rust_name {
+                assert_eq!(
+                    r, oracle_name,
+                    "string_to_name mismatch for random name '{}'",
+                    name
+                );
+                let r_str = rust.name_to_string(r).unwrap();
+                let o_str = oracle.name_to_string(oracle_name).unwrap();
+                assert_eq!(
+                    r_str, o_str,
+                    "name_to_string mismatch for random name '{}'",
+                    name
+                );
+            }
         }
     }
 }

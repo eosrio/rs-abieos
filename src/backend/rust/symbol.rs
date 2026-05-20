@@ -92,7 +92,9 @@ pub(crate) fn string_to_asset(s: &str) -> Result<(i64, u64), String> {
 
     let mut found_digit = false;
     while pos < end && bytes[pos] >= b'0' && bytes[pos] <= b'9' {
-        uamount = uamount.wrapping_mul(10).wrapping_add((bytes[pos] - b'0') as u64);
+        uamount = uamount
+            .wrapping_mul(10)
+            .wrapping_add((bytes[pos] - b'0') as u64);
         found_digit = true;
         pos += 1;
     }
@@ -103,8 +105,12 @@ pub(crate) fn string_to_asset(s: &str) -> Result<(i64, u64), String> {
     if pos < end && bytes[pos] == b'.' {
         pos += 1;
         while pos < end && bytes[pos] >= b'0' && bytes[pos] <= b'9' {
-            uamount = uamount.wrapping_mul(10).wrapping_add((bytes[pos] - b'0') as u64);
-            precision = precision.checked_add(1).ok_or_else(|| "precision overflow".to_string())?;
+            uamount = uamount
+                .wrapping_mul(10)
+                .wrapping_add((bytes[pos] - b'0') as u64);
+            precision = precision
+                .checked_add(1)
+                .ok_or_else(|| "precision overflow".to_string())?;
             pos += 1;
         }
     }
@@ -168,7 +174,7 @@ pub(crate) fn asset_to_string(amount: i64, symbol: u64) -> String {
 }
 
 pub(crate) fn bitset_from_string(s: &str) -> Result<Vec<u8>, String> {
-    let mut bytes = vec![0u8; (s.len() + 7) / 8];
+    let mut bytes = vec![0u8; s.len().div_ceil(8)];
     for (i, ch) in s.bytes().enumerate() {
         match ch {
             b'0' => {}

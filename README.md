@@ -284,3 +284,65 @@ Pure-Rust backend and oracle migration gates:
 cargo test --no-default-features --features rust-backend
 cargo test --no-default-features --features "rust-backend cpp-oracle"
 ```
+
+## Architecture & Design Notes
+
+### Active Backend Router
+The safe Rust public API (`Abieos`, `AbieosContract`, `NameLike`, etc.) is fully decoupled from the underlying engine. It routes calls dynamically to either `backend::cpp` (using FFI bindgen bindings to C++ `abieos`) or `backend::rust` (the pure Rust engine) based on the enabled Cargo features.
+
+### C++ Oracle Role
+The `cpp-oracle` feature exposes the original C++ backend side-by-side with the Rust backend. When both `rust-backend` and `cpp-oracle` are active, the safe public API uses the pure Rust engine while the C++ engine remains accessible via `rs_abieos::cpp_oracle`. This enables differential testing where randomized property fuzzing and table-driven parity suites compare outputs, exit codes, and error messages in real-time.
+
+### Result Buffer Ownership and Thread Safety
+To eliminate the UB risk of use-after-overwrite (where successive calls to FFI functions overwrite the same thread-local C buffer), the safe Rust wrapper copies results immediately into owned Rust types (`String`, `Vec<u8>`). This ensures complete memory safety and allows returned data to survive subsequent serialization calls.
+
+### Parity Scope
+The pure Rust backend implements 100% of the C++ `abieos` parsing rules, including complex ABI constructs like:
+- Order-independent base struct resolution
+- Pseudo-types (`optional`, `array`, `extension`, `binary_extension`)
+- Variants and fixed-size arrays
+- Cryptographic keys (K1, R1, WA) and signature parsing/formatting.
+
+---
+
+## Migration Guide
+
+### Transitioning to the Rust Backend
+Currently, `cpp-backend` is the default to maintain legacy stability. To completely opt-out of the C++ toolchain requirements (e.g. on MSVC Windows hosts or minimal Docker containers), configure `rs_abieos` with no default features:
+
+```toml
+[dependencies]
+rs_abieos = { version = "0.4.0", default-features = false, features = ["rust-backend"] }
+```
+
+### Build Requirements Matrix
+
+| Feature | Backend Engine | C++ Compiler Required | Clang/Bindgen Required |
+| :--- | :--- | :--- | :--- |
+| `cpp-backend` (default) | C++ `abieos.h` | Yes | Yes |
+| `rust-backend` | Pure Rust | No | No |
+| `rust-backend` + `cpp-oracle` | Pure Rust + C++ Oracle | Yes | Yes |
+
+If you discover any behavioral divergence between the C++ and Rust backends on valid or invalid inputs, please file an issue with the hex or JSON payload to help us expand the parity fixture coverage.
+
+---
+
+## Contributor Guide
+
+### Adding Parity Fixtures
+If you want to add test coverage for a specific type or format:
+1. **Table-driven types**: Add a row to the appropriate table in `tests/rust_backend_check_type_port.rs` or `tests/rust_backend_key_signature_port.rs`.
+2. **Error cases**: Add a row in `tests/rust_backend_check_error_port.rs` (checking custom structures, invalid payloads, overflows, or overruns).
+3. **Differential tests**: Add a row to `tests/cpp_oracle_differential.rs`. These automatically run against both Rust and C++ backends on Linux CI to ensure exact byte-for-byte and JSON-for-JSON identity.
+
+---
+
+## Release Checklist
+Before tagging and publishing a new release:
+- [ ] Run format check: `cargo fmt --all -- --check`
+- [ ] Run lints on both backends: `cargo clippy --all-targets --all-features -- -D warnings` and `cargo clippy --all-targets --no-default-features --features rust-backend -- -D warnings`
+- [ ] Verify test suite passes on all targets: `cargo test --all-features`
+- [ ] Run property and smoke fuzzing: `ABIEOS_FUZZ_ITERS=50000 cargo test --no-default-features --features rust-backend --test rust_backend_fuzz_property`
+- [ ] Confirm Criterion benchmarks compile: `cargo bench --no-run`
+- [ ] Check local documentation builds cleanly: `cargo doc --no-deps --all-features`
+

@@ -3,7 +3,7 @@ pub(crate) fn parse_time_seconds(s: &str) -> Result<u32, String> {
     let mut pos = 0;
     let end = bytes.len();
 
-    let mut parse_uint = |pos: &mut usize, digits: usize| -> Option<u32> {
+    let parse_uint = |pos: &mut usize, digits: usize| -> Option<u32> {
         let mut result = 0u32;
         for _ in 0..digits {
             if *pos < end && bytes[*pos] >= b'0' && bytes[*pos] <= b'9' {
@@ -17,23 +17,33 @@ pub(crate) fn parse_time_seconds(s: &str) -> Result<u32, String> {
     };
 
     let y = parse_uint(&mut pos, 4).ok_or_else(|| "Expected time point".to_string())?;
-    if pos >= end || bytes[pos] != b'-' { return Err("Expected time point".into()); }
+    if pos >= end || bytes[pos] != b'-' {
+        return Err("Expected time point".into());
+    }
     pos += 1;
 
     let m = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
-    if pos >= end || bytes[pos] != b'-' { return Err("Expected time point".into()); }
+    if pos >= end || bytes[pos] != b'-' {
+        return Err("Expected time point".into());
+    }
     pos += 1;
 
     let d = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
-    if pos >= end || bytes[pos] != b'T' { return Err("Expected time point".into()); }
+    if pos >= end || bytes[pos] != b'T' {
+        return Err("Expected time point".into());
+    }
     pos += 1;
 
     let h = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
-    if pos >= end || bytes[pos] != b':' { return Err("Expected time point".into()); }
+    if pos >= end || bytes[pos] != b':' {
+        return Err("Expected time point".into());
+    }
     pos += 1;
 
     let min = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
-    if pos >= end || bytes[pos] != b':' { return Err("Expected time point".into()); }
+    if pos >= end || bytes[pos] != b':' {
+        return Err("Expected time point".into());
+    }
     pos += 1;
 
     let sec = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
@@ -69,7 +79,7 @@ pub(crate) fn parse_time_microseconds(s: &str) -> Result<u64, String> {
     let mut pos = 0;
     let end = bytes.len();
 
-    let mut parse_uint = |pos: &mut usize, digits: usize| -> Option<u32> {
+    let parse_uint = |pos: &mut usize, digits: usize| -> Option<u32> {
         let mut result = 0u32;
         for _ in 0..digits {
             if *pos < end && bytes[*pos] >= b'0' && bytes[*pos] <= b'9' {
@@ -83,23 +93,33 @@ pub(crate) fn parse_time_microseconds(s: &str) -> Result<u64, String> {
     };
 
     let y = parse_uint(&mut pos, 4).ok_or_else(|| "Expected time point".to_string())?;
-    if pos >= end || bytes[pos] != b'-' { return Err("Expected time point".into()); }
+    if pos >= end || bytes[pos] != b'-' {
+        return Err("Expected time point".into());
+    }
     pos += 1;
 
     let m = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
-    if pos >= end || bytes[pos] != b'-' { return Err("Expected time point".into()); }
+    if pos >= end || bytes[pos] != b'-' {
+        return Err("Expected time point".into());
+    }
     pos += 1;
 
     let d = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
-    if pos >= end || bytes[pos] != b'T' { return Err("Expected time point".into()); }
+    if pos >= end || bytes[pos] != b'T' {
+        return Err("Expected time point".into());
+    }
     pos += 1;
 
     let h = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
-    if pos >= end || bytes[pos] != b':' { return Err("Expected time point".into()); }
+    if pos >= end || bytes[pos] != b':' {
+        return Err("Expected time point".into());
+    }
     pos += 1;
 
     let min = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;
-    if pos >= end || bytes[pos] != b':' { return Err("Expected time point".into()); }
+    if pos >= end || bytes[pos] != b':' {
+        return Err("Expected time point".into());
+    }
     pos += 1;
 
     let sec = parse_uint(&mut pos, 2).ok_or_else(|| "Expected time point".to_string())?;

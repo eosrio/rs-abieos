@@ -135,9 +135,7 @@ pub(crate) fn parse_abi_def(json: &str) -> Result<AbiDef, String> {
                                     "new_type_name" => {
                                         t.new_type_name = IStr::from(scalar(&mut p)?.as_ref())
                                     }
-                                    "type" => {
-                                        t.type_name = IStr::from(scalar(&mut p)?.as_ref())
-                                    }
+                                    "type" => t.type_name = IStr::from(scalar(&mut p)?.as_ref()),
                                     _ => p.skip_value()?,
                                 }
                                 if p.object_step()? {
@@ -223,12 +221,9 @@ pub(crate) fn parse_abi_def(json: &str) -> Result<AbiDef, String> {
                                     "name" => {
                                         a.name = string_to_name_value(scalar(&mut p)?.as_ref())
                                     }
-                                    "type" => {
-                                        a.type_name = IStr::from(scalar(&mut p)?.as_ref())
-                                    }
+                                    "type" => a.type_name = IStr::from(scalar(&mut p)?.as_ref()),
                                     "ricardian_contract" => {
-                                        a.ricardian_contract =
-                                            IStr::from(scalar(&mut p)?.as_ref())
+                                        a.ricardian_contract = IStr::from(scalar(&mut p)?.as_ref())
                                     }
                                     _ => p.skip_value()?,
                                 }
@@ -261,9 +256,7 @@ pub(crate) fn parse_abi_def(json: &str) -> Result<AbiDef, String> {
                                     "key_types" => {
                                         t.key_types = istr_arc_vec(&mut p, &mut sscratch)?
                                     }
-                                    "type" => {
-                                        t.type_name = IStr::from(scalar(&mut p)?.as_ref())
-                                    }
+                                    "type" => t.type_name = IStr::from(scalar(&mut p)?.as_ref()),
                                     _ => p.skip_value()?,
                                 }
                                 if p.object_step()? {

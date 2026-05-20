@@ -394,6 +394,18 @@ mod rust_backend_check_error_port {
                     contains: &["Leading zeros not allowed"],
                 },
                 JsonErrorCase {
+                    label: "recursion limit reached",
+                    ty: "int8",
+                    json: "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+                    contains: &["recursion limit reached"],
+                },
+                JsonErrorCase {
+                    label: "json parse error",
+                    ty: "int8",
+                    json: "1,2",
+                    contains: &["end of json"],
+                },
+                JsonErrorCase {
                     label: "unknown type",
                     ty: "fee",
                     json: "0",
@@ -405,6 +417,36 @@ mod rust_backend_check_error_port {
         assert_json_to_hex_contract_errors(
             &abieos,
             &[
+                JsonErrorCase {
+                    label: "optional and array nesting error",
+                    ty: "int8?[]",
+                    json: "",
+                    contains: &["nesting"],
+                },
+                JsonErrorCase {
+                    label: "optional and fixed_array nesting error",
+                    ty: "int8?[1]",
+                    json: "1",
+                    contains: &["nesting"],
+                },
+                JsonErrorCase {
+                    label: "optional may not contain extensions",
+                    ty: "int8$?",
+                    json: "",
+                    contains: &["nesting"],
+                },
+                JsonErrorCase {
+                    label: "array may not contain extensions",
+                    ty: "int8$[]",
+                    json: "",
+                    contains: &["nesting"],
+                },
+                JsonErrorCase {
+                    label: "binary extensions may not be nested",
+                    ty: "int8$$",
+                    json: "",
+                    contains: &["nesting"],
+                },
                 JsonErrorCase {
                     label: "s8 rejects null",
                     ty: "s8",
@@ -437,6 +479,29 @@ mod rust_backend_check_error_port {
                 },
             ],
         );
+    }
+
+    #[test]
+    fn rust_backend_ports_abi_validation_errors() {
+        let abieos = Abieos::new();
+
+        let err = err_string(abieos.set_abi_json(
+            "err.abi",
+            r#"{"version":"eosio::abi/1.1","types":[{"new_type_name":"","type":"int8"}]}"#,
+        ));
+        assert!(err.to_lowercase().contains("missing name"));
+
+        let err = err_string(abieos.set_abi_json(
+            "err.abi",
+            r#"{"version":"eosio::abi/1.1","types":[{"new_type_name":"a","type":"int8$"}]}"#,
+        ));
+        assert!(err.to_lowercase().contains("extension typedef"));
+
+        let err = err_string(abieos.set_abi_json(
+            "err.abi",
+            r#"{"version":"eosio::abi/1.1","types":[{"new_type_name":"a","type":"int8"},{"new_type_name":"a","type":"int8"}]}"#,
+        ));
+        assert!(err.to_lowercase().contains("redefined type"));
     }
 
     #[test]

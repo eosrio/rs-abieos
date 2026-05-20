@@ -99,9 +99,7 @@ impl Abi {
                 .collect(),
             // Only ABI-defined and compound types; builtins resolve via the
             // shared static (see `known`). Pre-sized to avoid rehashing.
-            types: fnv_map_with_capacity(
-                def.types.len() + def.structs.len() + def.variants.len(),
-            ),
+            types: fnv_map_with_capacity(def.types.len() + def.structs.len() + def.variants.len()),
         };
         for t in &def.types {
             if t.new_type_name.is_empty() {
@@ -145,8 +143,7 @@ impl Abi {
                 return Err("Redefined type".into());
             }
         }
-        let mut structs: FnvMap<IStr, &StructDef> =
-            fnv_map_with_capacity(def.structs.len());
+        let mut structs: FnvMap<IStr, &StructDef> = fnv_map_with_capacity(def.structs.len());
         for s in &def.structs {
             structs.insert(s.name.clone(), s);
         }
@@ -278,6 +275,7 @@ impl Abi {
         reorderable: bool,
         out: &mut Vec<u8>,
     ) -> Result<(), String> {
+        self.ensure_type(type_name, 0)?;
         let value = parse_json(json)?;
         out.clear();
         let mut w = Writer::new(out);

@@ -275,8 +275,11 @@ mod parity_measurer {
         let oracle = Oracle::new();
 
         // Establish contract zero ABIs to prevent 'not loaded' errors on C++ side
-        rust.set_abi_json_native(0, r#"{"version": "eosio::abi/1.1"}"#).unwrap();
-        oracle.set_abi_json(0, r#"{"version": "eosio::abi/1.1"}"#).unwrap();
+        rust.set_abi_json_native(0, r#"{"version": "eosio::abi/1.1"}"#)
+            .unwrap();
+        oracle
+            .set_abi_json(0, r#"{"version": "eosio::abi/1.1"}"#)
+            .unwrap();
 
         // 1. Builtins Category
         let builtin_rows = [
@@ -289,29 +292,106 @@ mod parity_measurer {
             CodecRow::success("uint16 max", 0, "uint16", "65535", "65535"),
             CodecRow::success("int32 min", 0, "int32", "-2147483648", "-2147483648"),
             CodecRow::success("uint32 max", 0, "uint32", "4294967295", "4294967295"),
-            CodecRow::success("int64 min", 0, "int64", "-9223372036854775808", r#""-9223372036854775808""#),
-            CodecRow::success("uint64 max", 0, "uint64", "18446744073709551615", r#""18446744073709551615""#),
-            CodecRow::success("int128 min", 0, "int128", "-170141183460469231731687303715884105728", r#""-170141183460469231731687303715884105728""#),
-            CodecRow::success("uint128 max", 0, "uint128", "340282366920938463463374607431768211455", r#""340282366920938463463374607431768211455""#),
+            CodecRow::success(
+                "int64 min",
+                0,
+                "int64",
+                "-9223372036854775808",
+                r#""-9223372036854775808""#,
+            ),
+            CodecRow::success(
+                "uint64 max",
+                0,
+                "uint64",
+                "18446744073709551615",
+                r#""18446744073709551615""#,
+            ),
+            CodecRow::success(
+                "int128 min",
+                0,
+                "int128",
+                "-170141183460469231731687303715884105728",
+                r#""-170141183460469231731687303715884105728""#,
+            ),
+            CodecRow::success(
+                "uint128 max",
+                0,
+                "uint128",
+                "340282366920938463463374607431768211455",
+                r#""340282366920938463463374607431768211455""#,
+            ),
             CodecRow::success("varuint32 max", 0, "varuint32", "4294967295", "4294967295"),
             CodecRow::success("varint32 min", 0, "varint32", "-2147483648", "-2147483648"),
             CodecRow::success("float32 simple", 0, "float32", "0.125", "0.125"),
             CodecRow::success("float64 simple", 0, "float64", "-0.125", "-0.125"),
-            CodecRow::success("float128 hex", 0, "float128", r#""12345678ABCDEF12345678ABCDEF1234""#, r#""12345678ABCDEF12345678ABCDEF1234""#),
-            CodecRow::success("time_point_sec", 0, "time_point_sec", r#""2018-06-15T19:17:47.000""#, r#""2018-06-15T19:17:47.000""#),
-            CodecRow::success("time_point", 0, "time_point", r#""2000-12-31T23:59:59.999999""#, r#""2000-12-31T23:59:59.999""#),
-            CodecRow::success("block_timestamp_type", 0, "block_timestamp_type", r#""2000-01-01T00:00:00.500""#, r#""2000-01-01T00:00:00.500""#),
-            CodecRow::success("name dot suffix", 0, "name", r#""..ab.cd.ef..""#, r#""..ab.cd.ef""#),
-            CodecRow::success("bytes hex representation", 0, "bytes", r#""AABBCCDDEEFF00010203040506070809""#, r#""AABBCCDDEEFF00010203040506070809""#),
-            CodecRow::success("checksum160", 0, "checksum160", r#""123456789ABCDEF01234567890ABCDEF70123456""#, r#""123456789ABCDEF01234567890ABCDEF70123456""#),
-            CodecRow::success("checksum256", 0, "checksum256", r#""0987654321ABCDEF0987654321FFFF1234567890ABCDEF001234567890ABCDEF""#, r#""0987654321ABCDEF0987654321FFFF1234567890ABCDEF001234567890ABCDEF""#),
+            CodecRow::success(
+                "float128 hex",
+                0,
+                "float128",
+                r#""12345678ABCDEF12345678ABCDEF1234""#,
+                r#""12345678ABCDEF12345678ABCDEF1234""#,
+            ),
+            CodecRow::success(
+                "time_point_sec",
+                0,
+                "time_point_sec",
+                r#""2018-06-15T19:17:47.000""#,
+                r#""2018-06-15T19:17:47.000""#,
+            ),
+            CodecRow::success(
+                "time_point",
+                0,
+                "time_point",
+                r#""2000-12-31T23:59:59.999999""#,
+                r#""2000-12-31T23:59:59.999""#,
+            ),
+            CodecRow::success(
+                "block_timestamp_type",
+                0,
+                "block_timestamp_type",
+                r#""2000-01-01T00:00:00.500""#,
+                r#""2000-01-01T00:00:00.500""#,
+            ),
+            CodecRow::success(
+                "name dot suffix",
+                0,
+                "name",
+                r#""..ab.cd.ef..""#,
+                r#""..ab.cd.ef""#,
+            ),
+            CodecRow::success(
+                "bytes hex representation",
+                0,
+                "bytes",
+                r#""AABBCCDDEEFF00010203040506070809""#,
+                r#""AABBCCDDEEFF00010203040506070809""#,
+            ),
+            CodecRow::success(
+                "checksum160",
+                0,
+                "checksum160",
+                r#""123456789ABCDEF01234567890ABCDEF70123456""#,
+                r#""123456789ABCDEF01234567890ABCDEF70123456""#,
+            ),
+            CodecRow::success(
+                "checksum256",
+                0,
+                "checksum256",
+                r#""0987654321ABCDEF0987654321FFFF1234567890ABCDEF001234567890ABCDEF""#,
+                r#""0987654321ABCDEF0987654321FFFF1234567890ABCDEF001234567890ABCDEF""#,
+            ),
             CodecRow::success("symbol_code", 0, "symbol_code", r#""SYS""#, r#""SYS""#),
             CodecRow::success("symbol", 0, "symbol", r#""4,SYS""#, r#""4,SYS""#),
             CodecRow::success("asset", 0, "asset", r#""-1.2345 SYS""#, r#""-1.2345 SYS""#),
         ];
 
         let mut stats = vec![];
-        stats.push(run_category("Built-in Types (Scalars & Builtins)", &rust, &oracle, &builtin_rows));
+        stats.push(run_category(
+            "Built-in Types (Scalars & Builtins)",
+            &rust,
+            &oracle,
+            &builtin_rows,
+        ));
 
         // 2. Structs and ABIs Category
         let contract = rust.string_to_name(TEST_ABI_CONTRACT).unwrap();
@@ -319,21 +399,98 @@ mod parity_measurer {
         oracle.set_abi_json(contract, TEST_ABI).unwrap();
 
         let struct_rows = [
-            CodecRow::success("fixed int8 array", contract, "s8", r#"{"a1":[1,27]}"#, r#"{"a1":[1,27]}"#),
-            CodecRow::success("int8 variant", contract, "v1", r#"["int8",7]"#, r#"["int8",7]"#),
-            CodecRow::success("struct variant", contract, "v1", r#"["s1",{"x1":6}]"#, r#"["s1",{"x1":6}]"#),
-            CodecRow::success("nested fixed array", contract, "s9", r#"{"a1":[{"x1":6},{"x1":16}]}"#, r#"{"a1":[{"x1":6},{"x1":16}]}"#),
-            CodecRow::success("bitset input", contract, "s7", r#"{"bs":"110001011"}"#, r#"{"bs":"110001011"}"#),
+            CodecRow::success(
+                "fixed int8 array",
+                contract,
+                "s8",
+                r#"{"a1":[1,27]}"#,
+                r#"{"a1":[1,27]}"#,
+            ),
+            CodecRow::success(
+                "int8 variant",
+                contract,
+                "v1",
+                r#"["int8",7]"#,
+                r#"["int8",7]"#,
+            ),
+            CodecRow::success(
+                "struct variant",
+                contract,
+                "v1",
+                r#"["s1",{"x1":6}]"#,
+                r#"["s1",{"x1":6}]"#,
+            ),
+            CodecRow::success(
+                "nested fixed array",
+                contract,
+                "s9",
+                r#"{"a1":[{"x1":6},{"x1":16}]}"#,
+                r#"{"a1":[{"x1":6},{"x1":16}]}"#,
+            ),
+            CodecRow::success(
+                "bitset input",
+                contract,
+                "s7",
+                r#"{"bs":"110001011"}"#,
+                r#"{"bs":"110001011"}"#,
+            ),
             CodecRow::success("optional extension none", contract, "s3", r#"{}"#, r#"{}"#),
-            CodecRow::success("optional extension partial", contract, "s3", r#"{"z1":7,"z2":["int8",6]}"#, r#"{"z1":7,"z2":["int8",6]}"#),
-            CodecRow::success("optional extension full", contract, "s3", r#"{"z1":7,"z2":["int8",6],"z3":{"y1":9,"y2":10}}"#, r#"{"z1":7,"z2":["int8",6],"z3":{"y1":9,"y2":10}}"#),
-            CodecRow::success("optional extension array empty", contract, "s4", r#"{"a1":null,"b1":[]}"#, r#"{"a1":null,"b1":[]}"#),
-            CodecRow::success("optional extension array values", contract, "s4", r#"{"a1":null,"b1":[5,6,7]}"#, r#"{"a1":null,"b1":[5,6,7]}"#),
-            CodecRow::success("legacy public key canonicalization", contract, "public_key_holder", r#"{"key":"EOS1111111111111111111111111111111114T1Anm"}"#, r#"{"key":"PUB_K1_11111111111111111111111111111111149Mr2R"}"#),
-            CodecRow::success("legacy private key canonicalization", contract, "private_key_holder", r#"{"key":"5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3"}"#, r#"{"key":"PVT_K1_2bfGi9rYsXQSXXTvJbDAPhHLQUojjaNLomdm3cEJ1XTzMqUt3V"}"#),
-            CodecRow::success("signature", contract, "signature_holder", r#"{"sig":"SIG_K1_Kg2UKjXTX48gw2wWH4zmsZmWu3yarcfC21Bd9JPj7QoDURqiAacCHmtExPk3syPb2tFLsp1R4ttXLXgr7FYgDvKPC5RCkx"}"#, r#"{"sig":"SIG_K1_Kg2UKjXTX48gw2wWH4zmsZmWu3yarcfC21Bd9JPj7QoDURqiAacCHmtExPk3syPb2tFLsp1R4ttXLXgr7FYgDvKPC5RCkx"}"#),
+            CodecRow::success(
+                "optional extension partial",
+                contract,
+                "s3",
+                r#"{"z1":7,"z2":["int8",6]}"#,
+                r#"{"z1":7,"z2":["int8",6]}"#,
+            ),
+            CodecRow::success(
+                "optional extension full",
+                contract,
+                "s3",
+                r#"{"z1":7,"z2":["int8",6],"z3":{"y1":9,"y2":10}}"#,
+                r#"{"z1":7,"z2":["int8",6],"z3":{"y1":9,"y2":10}}"#,
+            ),
+            CodecRow::success(
+                "optional extension array empty",
+                contract,
+                "s4",
+                r#"{"a1":null,"b1":[]}"#,
+                r#"{"a1":null,"b1":[]}"#,
+            ),
+            CodecRow::success(
+                "optional extension array values",
+                contract,
+                "s4",
+                r#"{"a1":null,"b1":[5,6,7]}"#,
+                r#"{"a1":null,"b1":[5,6,7]}"#,
+            ),
+            CodecRow::success(
+                "legacy public key canonicalization",
+                contract,
+                "public_key_holder",
+                r#"{"key":"EOS1111111111111111111111111111111114T1Anm"}"#,
+                r#"{"key":"PUB_K1_11111111111111111111111111111111149Mr2R"}"#,
+            ),
+            CodecRow::success(
+                "legacy private key canonicalization",
+                contract,
+                "private_key_holder",
+                r#"{"key":"5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3"}"#,
+                r#"{"key":"PVT_K1_2bfGi9rYsXQSXXTvJbDAPhHLQUojjaNLomdm3cEJ1XTzMqUt3V"}"#,
+            ),
+            CodecRow::success(
+                "signature",
+                contract,
+                "signature_holder",
+                r#"{"sig":"SIG_K1_Kg2UKjXTX48gw2wWH4zmsZmWu3yarcfC21Bd9JPj7QoDURqiAacCHmtExPk3syPb2tFLsp1R4ttXLXgr7FYgDvKPC5RCkx"}"#,
+                r#"{"sig":"SIG_K1_Kg2UKjXTX48gw2wWH4zmsZmWu3yarcfC21Bd9JPj7QoDURqiAacCHmtExPk3syPb2tFLsp1R4ttXLXgr7FYgDvKPC5RCkx"}"#,
+            ),
         ];
-        stats.push(run_category("Complex Structs, Variants & Bitsets", &rust, &oracle, &struct_rows));
+        stats.push(run_category(
+            "Complex Structs, Variants & Bitsets",
+            &rust,
+            &oracle,
+            &struct_rows,
+        ));
 
         // 3. New Fixtures (testkv, packed_trx, ship)
         let testkv_contract = rust.string_to_name("testkv").unwrap();
@@ -344,7 +501,9 @@ mod parity_measurer {
         let packed_tx_contract = rust.string_to_name("packed.tx").unwrap();
         let packed_tx_abi = include_str!("../abis/packed_transaction.abi.json");
         rust.set_abi_json("packed.tx", packed_tx_abi).unwrap();
-        oracle.set_abi_json(packed_tx_contract, packed_tx_abi).unwrap();
+        oracle
+            .set_abi_json(packed_tx_contract, packed_tx_abi)
+            .unwrap();
 
         let ship_contract = rust.string_to_name("ship").unwrap();
         let ship_abi = include_str!("../abis/ship.abi.json");
@@ -381,7 +540,12 @@ mod parity_measurer {
                 r#"{"block_num":1000,"block_id":"000003E800000000000000000000000000000000000000000000000000000000"}"#,
             ),
         ];
-        stats.push(run_category("New Parity Fixtures (Ship, testkv, packed_trx)", &rust, &oracle, &new_fixture_rows));
+        stats.push(run_category(
+            "New Parity Fixtures (Ship, testkv, packed_trx)",
+            &rust,
+            &oracle,
+            &new_fixture_rows,
+        ));
 
         // 4. Error/Failure Boundaries
         let failure_rows = [
@@ -394,9 +558,19 @@ mod parity_measurer {
             CodecRow::failure("asset null is invalid", 0, "asset", "null"),
             CodecRow::failure("fixed array too short", contract, "s8", r#"{"a1":[1]}"#),
             CodecRow::failure("fixed array too long", contract, "s8", r#"{"a1":[1,2,3]}"#),
-            CodecRow::failure("public key bad checksum", contract, "public_key_holder", r#"{"key":"PUB_K1_11111111111111111111111111111111149Mr2S"}"#),
+            CodecRow::failure(
+                "public key bad checksum",
+                contract,
+                "public_key_holder",
+                r#"{"key":"PUB_K1_11111111111111111111111111111111149Mr2S"}"#,
+            ),
         ];
-        stats.push(run_category("Boundary Errors & Input Validations", &rust, &oracle, &failure_rows));
+        stats.push(run_category(
+            "Boundary Errors & Input Validations",
+            &rust,
+            &oracle,
+            &failure_rows,
+        ));
 
         // Print final reports
         println!("============================================================");
@@ -406,14 +580,20 @@ mod parity_measurer {
         let mut total_matching = 0;
         for cat in &stats {
             let pct = (cat.matching as f64 / cat.total as f64) * 100.0;
-            println!("* {:<44} | {:>2}/{:<2} ({:.2}%)", cat.name, cat.matching, cat.total, pct);
+            println!(
+                "* {:<44} | {:>2}/{:<2} ({:.2}%)",
+                cat.name, cat.matching, cat.total, pct
+            );
             total_tests += cat.total;
             total_matching += cat.matching;
         }
 
         let overall_pct = (total_matching as f64 / total_tests as f64) * 100.0;
         println!("------------------------------------------------------------");
-        println!("  OVERALL PARITY SCORE                      | {:>2}/{:<2} ({:.2}%)", total_matching, total_tests, overall_pct);
+        println!(
+            "  OVERALL PARITY SCORE                      | {:>2}/{:<2} ({:.2}%)",
+            total_matching, total_tests, overall_pct
+        );
         println!("============================================================");
         if total_tests == total_matching {
             println!("  STATUS: 100% PERFECT PARITY ACHIEVED! 🎉                  ");
@@ -451,8 +631,7 @@ mod parity_measurer {
                     let rust_json = rust
                         .hex_to_json_native(row.contract, row.ty, &r_hex)
                         .map_err(|e| e.to_string());
-                    let oracle_json =
-                        oracle.hex_to_json_contract(row.contract, row.ty, &o_hex);
+                    let oracle_json = oracle.hex_to_json_contract(row.contract, row.ty, &o_hex);
 
                     if result_status(&rust_json) != result_status(&oracle_json) {
                         matched = false;
@@ -497,8 +676,12 @@ fn main() {
 
     #[cfg(not(all(feature = "rust-backend", feature = "cpp-oracle")))]
     {
-        println!("Error: To run the parity measurer script, you must enable all required features.");
+        println!(
+            "Error: To run the parity measurer script, you must enable all required features."
+        );
         println!("Please run the following command:");
-        println!("  cargo run --example measure_parity --target x86_64-pc-windows-gnu --all-features");
+        println!(
+            "  cargo run --example measure_parity --target x86_64-pc-windows-gnu --all-features"
+        );
     }
 }

@@ -187,6 +187,10 @@ mod rust_backend_check_type_port {
             Case::new("string", r#""This is a string.""#),
             Case::new("string", r#""' + '*'.repeat(128) + '""#),
             Case::new(
+                "string",
+                r#""\u0000  这是一个测试  Это тест  هذا اختبار 👍""#,
+            ),
+            Case::new(
                 "checksum160",
                 r#""0000000000000000000000000000000000000000""#,
             ),
