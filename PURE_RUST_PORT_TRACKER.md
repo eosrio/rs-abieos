@@ -269,8 +269,13 @@ maintainability.
 - `[x]` Port state-history / ship protocol fixtures.
 - `[x]` Port KV/table/action result ABI fixtures.
 - `[x]` Port ABI JSON/bin conversion edge fixtures.
-- `[ ]` Convert fixtures into data-driven tables shared by Rust-only and
+- `[~]` Convert fixtures into data-driven tables shared by Rust-only and
   oracle-differential tests.
+  - `[x]` Binary-extension nesting fixtures now live in a shared table consumed
+    by both `rust_backend_extension_nesting.rs` and
+    `cpp_oracle_differential.rs`.
+  - `[ ]` Malformed-binary, ABI-conversion, and broader `check_type` /
+    `check_error` tables still need the same treatment.
 
 ## Milestone 7: C++ Oracle Differential Tests
 

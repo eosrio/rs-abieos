@@ -1,7 +1,11 @@
 #![allow(clippy::manual_is_multiple_of)]
 
+#[path = "common/extension_nesting_fixtures.rs"]
+mod extension_nesting_fixtures;
+
 #[cfg(all(feature = "rust-backend", feature = "cpp-oracle"))]
 mod cpp_oracle_differential {
+    use super::extension_nesting_fixtures::{EXTENSION_NESTING_ABI, EXTENSION_NESTING_CASES};
     use rs_abieos::{cpp_oracle, Abieos};
     use std::ffi::{CStr, CString};
 
@@ -755,71 +759,6 @@ mod cpp_oracle_differential {
                     r#"{"bs":"110001011"}"#,
                     r#"{"bs":"110001011"}"#,
                 ),
-                CodecRow::success("extension empty", contract, "s3", r#"{}"#, r#"{}"#),
-                CodecRow::success(
-                    "extension first field",
-                    contract,
-                    "s3",
-                    r#"{"z1":7}"#,
-                    r#"{"z1":7}"#,
-                ),
-                CodecRow::success(
-                    "extension variant",
-                    contract,
-                    "s3",
-                    r#"{"z1":7,"z2":["int8",6]}"#,
-                    r#"{"z1":7,"z2":["int8",6]}"#,
-                ),
-                CodecRow::success(
-                    "extension trailing empty skipped",
-                    contract,
-                    "s3",
-                    r#"{"z1":7,"z2":["int8",6],"z3":{}}"#,
-                    r#"{"z1":7,"z2":["int8",6]}"#,
-                ),
-                CodecRow::success(
-                    "extension nested one field",
-                    contract,
-                    "s3",
-                    r#"{"z1":7,"z2":["int8",6],"z3":{"y1":9}}"#,
-                    r#"{"z1":7,"z2":["int8",6],"z3":{"y1":9}}"#,
-                ),
-                CodecRow::success(
-                    "extension nested two fields",
-                    contract,
-                    "s3",
-                    r#"{"z1":7,"z2":["int8",6],"z3":{"y1":9,"y2":10}}"#,
-                    r#"{"z1":7,"z2":["int8",6],"z3":{"y1":9,"y2":10}}"#,
-                ),
-                CodecRow::success("optional extension empty", contract, "s4", r#"{}"#, r#"{}"#),
-                CodecRow::success(
-                    "optional extension null",
-                    contract,
-                    "s4",
-                    r#"{"a1":null}"#,
-                    r#"{"a1":null}"#,
-                ),
-                CodecRow::success(
-                    "optional extension value",
-                    contract,
-                    "s4",
-                    r#"{"a1":7}"#,
-                    r#"{"a1":7}"#,
-                ),
-                CodecRow::success(
-                    "optional extension array empty",
-                    contract,
-                    "s4",
-                    r#"{"a1":null,"b1":[]}"#,
-                    r#"{"a1":null,"b1":[]}"#,
-                ),
-                CodecRow::success(
-                    "optional extension array values",
-                    contract,
-                    "s4",
-                    r#"{"a1":null,"b1":[5,6,7]}"#,
-                    r#"{"a1":null,"b1":[5,6,7]}"#,
-                ),
                 CodecRow::success(
                     "legacy public key canonicalization",
                     contract,
@@ -851,6 +790,27 @@ mod cpp_oracle_differential {
                 ),
             ],
         );
+    }
+
+    #[test]
+    fn rust_backend_matches_cpp_oracle_for_extension_nesting_fixture_table() {
+        let rust = Abieos::new();
+        let oracle = Oracle::new();
+        let contract = rust.string_to_name(TEST_ABI_CONTRACT).unwrap();
+        assert_eq!(contract, oracle.string_to_name(TEST_ABI_CONTRACT));
+        rust.set_abi_json(TEST_ABI_CONTRACT, EXTENSION_NESTING_ABI)
+            .unwrap();
+        oracle
+            .set_abi_json(contract, EXTENSION_NESTING_ABI)
+            .unwrap();
+
+        let rows: Vec<_> = EXTENSION_NESTING_CASES
+            .iter()
+            .map(|case| {
+                CodecRow::success(case.label, contract, case.ty, case.json, case.expected_json)
+            })
+            .collect();
+        compare_codec_rows(&rust, &oracle, &rows);
     }
 
     #[test]
