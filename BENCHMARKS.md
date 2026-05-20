@@ -19,10 +19,24 @@ Validation of the experimental pure-Rust backend against the vendored C++
   ```
 - Fixtures: canonical `eosio.token` `transfer` action (JSON/hex/bin), the full
   real-world `abis/eosio.abi` (JSON, ~77 KB) and `abis/eosio.abi.bin` (~42 KB),
-  `eosio.token` hex ABI, and name conversion.
+  `eosio.token` hex ABI, `abis/transaction.abi.json` with a representative
+  packed transaction fixture, and name conversion.
+- Dedicated transaction packing/unpacking coverage lives in the
+  `transaction_codec/*_transaction` benchmarks. These use the safe public API
+  with a normal string contract name and are backend-agnostic in the same way as
+  the action codec benchmarks.
+- Ordered JSON-to-binary conversion is intentionally out of scope for this
+  safe-API benchmark harness. The safe `Abieos::json_to_hex` and
+  `Abieos::json_to_bin` methods expose reorderable JSON conversion; the
+  ordered-only backend entrypoint is not part of the public safe API being
+  compared here.
+- CI compiles the Rust-backend benchmark harness with
+  `cargo bench --no-default-features --features rust-backend --no-run`.
+  Full Criterion comparisons remain manual/release-gate measurements because
+  stable performance numbers need a controlled machine state.
 - Settings for the recorded run: warm-up 2 s, measurement 5 s, 80 samples,
   C++ and Rust measured back-to-back on the same machine state. All 13
-  benchmarks completed without error on **both** backends.
+  originally recorded benchmarks completed without error on **both** backends.
 
 ## Results (medians)
 

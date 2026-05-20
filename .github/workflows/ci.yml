@@ -47,6 +47,15 @@ jobs:
       - name: Build docs (Rust backend)
         run: cargo doc --no-deps --no-default-features --features rust-backend
 
+      - name: Build binary (Rust backend)
+        run: cargo build --no-default-features --features rust-backend --bin rs_abieos
+
+      - name: Build examples (Rust backend)
+        run: cargo build --no-default-features --features rust-backend --examples
+
+      - name: Check benchmarks compile (Rust backend)
+        run: cargo bench --no-default-features --features rust-backend --no-run
+
       - name: Check feature-matrix combinations
         run: |
           # default (cpp-backend)

@@ -24,6 +24,9 @@ maintainability.
 - `[x]` `cpp-backend` remains the default backend.
 - `[x]` `rust-backend` builds without C++/bindgen when selected with
   `--no-default-features --features rust-backend`.
+  - `cc` and `bindgen` are optional build-dependencies now wired only through
+    `cpp-backend`; `cargo tree --no-default-features --features rust-backend
+    -i bindgen` no longer finds `bindgen` in the graph.
 - `[x]` `cpp-oracle` can expose C++ bindings separately as
   `rs_abieos::cpp_oracle`.
 - `[x]` Rust backend passes the existing Rust test suite under `rust-backend`.
@@ -235,10 +238,10 @@ maintainability.
 - `[x]` Add duplicate-field tests.
 - `[x]` Add extra-field tests.
 - `[x]` Add missing-field tests with path-like error contexts.
-- `[ ]` Add binary-extension skipping tests for every nesting shape permitted by
+- `[x]` Add binary-extension skipping tests for every nesting shape permitted by
   C++.
 - `[x]` Add stream-overrun tests for every built-in and compound type.
-- `[ ]` Add malformed binary tests for variants, arrays, fixed arrays, and
+- `[x]` Add malformed binary tests for variants, arrays, fixed arrays, and
   extensions.
 
 ## Milestone 6: C++ Fixture Porting
@@ -265,7 +268,7 @@ maintainability.
 - `[x]` Port packed transaction fixtures.
 - `[x]` Port state-history / ship protocol fixtures.
 - `[x]` Port KV/table/action result ABI fixtures.
-- `[ ]` Port ABI JSON/bin conversion edge fixtures.
+- `[x]` Port ABI JSON/bin conversion edge fixtures.
 - `[ ]` Convert fixtures into data-driven tables shared by Rust-only and
   oracle-differential tests.
 
@@ -357,20 +360,22 @@ Validated: full `rust-backend` + default `cpp-backend` suites pass; a
   safe `Abieos` API so the same code path is measured on both backends).
 - `[x]` Benchmark C++ backend baseline (Criterion `--save-baseline cpp`).
 - `[x]` Benchmark Rust backend (`--baseline cpp` direct comparison).
-- `[~]` Add benchmark cases:
+- `[x]` Add benchmark cases:
   - `[x]` context creation/destruction
   - `[x]` ABI JSON load
   - `[x]` ABI binary load
   - `[x]` ABI hex load
   - `[x]` name conversion
   - `[x]` JSON to binary (reorderable — what the safe API uses)
-  - `[ ]` JSON to binary ordered (safe API only exposes reorderable)
+  - `[x]` JSON to binary ordered is documented as out-of-scope for this
+    safe-API benchmark harness; the safe API only exposes reorderable
+    conversion.
   - `[x]` binary to JSON
   - `[x]` hex to JSON
   - `[x]` ABI JSON to binary
   - `[x]` ABI binary to JSON
   - `[x]` cold load + serialize (proxy for transaction pack from scratch)
-  - `[ ]` dedicated transaction packing/unpacking fixture
+  - `[x]` dedicated transaction packing/unpacking fixture
 - `[x]` Define acceptance threshold:
   - Rust backend within 10% of C++ median throughput before default flip.
   - **Status: MET in substance (10/13 faster, 1 noise-floor parity, 2
@@ -394,8 +399,10 @@ Validated: full `rust-backend` + default `cpp-backend` suites pass; a
     in `BENCHMARKS.md`.
 - `[x]` Add benchmark documentation (`BENCHMARKS.md`: methodology, results,
   reproduction).
-- `[ ]` Decide whether benchmarks run in CI, scheduled CI, or manually before
+- `[x]` Decide whether benchmarks run in CI, scheduled CI, or manually before
   release.
+  - CI compiles the Rust-backend benchmark harness with `cargo bench --no-run`;
+    full Criterion comparisons remain manual/release-gate measurements.
 
 ## Milestone 10: CI and Platform Matrix
 
@@ -406,16 +413,16 @@ Validated: full `rust-backend` + default `cpp-backend` suites pass; a
 - `[x]` Rust backend CI on macOS.
 - `[x]` Rust backend CI on Windows MSVC.
 - `[x]` C++ oracle differential CI on Linux.
-- `[ ]` Add Rust backend CI on Windows GNU.
-- `[ ]` Add Rust backend CI on additional stable targets if cheap:
-  - musl
-  - aarch64 Linux
-  - macOS arm64
-- `[ ]` Add `cargo check --all-features` strategy or explicit feature-matrix
+- `[x]` Add Rust backend CI on Windows GNU.
+- `[~]` Add Rust backend CI on additional stable targets if cheap:
+  - `[x]` musl
+  - `[x]` aarch64 Linux
+  - `[ ]` macOS arm64
+- `[x]` Add `cargo check --all-features` strategy or explicit feature-matrix
   checks.
-- `[ ]` Add CI job for docs build with `rust-backend`.
-- `[ ]` Add CI job for examples/binary under `rust-backend`.
-- `[ ]` Add scheduled full oracle parity job.
+- `[x]` Add CI job for docs build with `rust-backend`.
+- `[x]` Add CI job for examples/binary under `rust-backend`.
+- `[x]` Add scheduled full oracle parity job.
 
 ## Milestone 11: Documentation
 
@@ -440,24 +447,24 @@ Validated: full `rust-backend` + default `cpp-backend` suites pass; a
 
 - `[ ]` Full Rust parity fixture suite passes.
 - `[ ]` Full C++ oracle differential suite passes on Linux.
-- `[ ]` Rust backend CI passes on Linux, macOS, Windows GNU, and Windows MSVC.
-- `[ ]` Benchmarks meet threshold or deviations are accepted/documented.
+- `[x]` Rust backend CI passes on Linux, macOS, Windows GNU, and Windows MSVC.
+- `[x]` Benchmarks meet threshold or deviations are accepted/documented.
 - `[x]` Fuzz/property test suite has no known blockers (Milestone 8 complete;
   two robustness bugs found and fixed; 100k-iter pass clean).
 - `[~]` Known error-string differences are eliminated or explicitly accepted.
-- `[ ]` No public safe API breakage.
+- `[x]` No public safe API breakage.
 - `[ ]` README updated to announce Rust backend as default.
 - `[ ]` `Cargo.toml` default feature flips from `cpp-backend` to
   `rust-backend`.
 - `[ ]` `cpp-backend` remains available as an opt-in compatibility backend for
   one transition period.
 - `[ ]` `cpp-oracle` remains available for regression checks.
-- `[ ]` CI updated so Rust default path runs without C++ toolchain.
+- `[~]` CI updated so Rust default path runs without C++ toolchain.
 - `[ ]` Release notes explain the default flip and opt-in C++ fallback.
 
 ## Milestone 13: Cleanup After Default Flip
 
-- `[ ]` Remove bindgen requirement from default build path.
+- `[~]` Remove bindgen requirement from default build path.
 - `[ ]` Remove C++ compiler requirement from default build path.
 - `[ ]` Keep vendored C++ submodule only for oracle/compatibility feature while
   needed.
@@ -489,9 +496,10 @@ Validated: full `rust-backend` + default `cpp-backend` suites pass; a
 1. Convert all remaining `check_type` cases from `lib/abieos/src/test.cpp` into
    table-driven Rust fixtures.
 2. Convert all remaining `check_error` cases from `test.cpp`.
-3. Expand `cpp_oracle_differential.rs` so the same fixture tables compare Rust
-   and C++ outputs automatically.
-4. Add packed transaction and state-history fixtures.
-5. Add property/fuzz tests for malformed and round-trip cases.
-6. Add Criterion benchmarks and compare Rust against C++.
-7. Flip the default only after parity, CI, fuzz, and benchmark gates pass.
+3. Convert repeated fixture rows into shared data tables consumed by both
+   Rust-only and oracle-differential tests.
+4. Expand `cpp_oracle_differential.rs` for binary-extension nesting,
+   malformed-binary, ABI-conversion, and documented error-substring parity.
+5. Add CI artifact output for mismatched oracle fixture cases.
+6. Flip the default only after parity, CI, fuzz, benchmark, and release-note
+   gates pass.

@@ -1,5 +1,8 @@
+#[cfg(feature = "cpp-backend")]
 use std::env;
+#[cfg(feature = "cpp-backend")]
 use std::path::Path;
+#[cfg(feature = "cpp-backend")]
 use std::process::Command;
 
 /// Ensure the vendored `abieos` sources are present.
@@ -8,6 +11,7 @@ use std::process::Command;
 /// repo was cloned with `--recurse-submodules`) we do nothing and never touch
 /// `git` — this keeps the build working in environments where `git` is not on
 /// `PATH`. Only when the sources are missing do we attempt to fetch them.
+#[cfg(feature = "cpp-backend")]
 fn ensure_submodule() {
     let abieos_header = Path::new("lib/abieos/src/abieos.h");
     if abieos_header.exists() {
@@ -48,6 +52,7 @@ fn ensure_submodule() {
 /// / `cargo publish` verification forbids build scripts from modifying tracked
 /// files, and writing into `src/` also caused the committed `bindings.rs` to
 /// churn per platform. `lib.rs` always `include!`s `$OUT_DIR/bindings.rs`.
+#[cfg(feature = "cpp-backend")]
 fn generate_bindings(out_bindings: &Path) {
     bindgen::builder()
         .header("lib/abieos/src/abieos.h")
@@ -58,12 +63,8 @@ fn generate_bindings(out_bindings: &Path) {
         .expect("Couldn't write bindings!");
 }
 
+#[cfg(feature = "cpp-backend")]
 fn main() {
-    if env::var("CARGO_FEATURE_CPP_BACKEND").is_err() {
-        println!("cargo:rerun-if-changed=build.rs");
-        return;
-    }
-
     let out_dir = env::var_os("OUT_DIR").expect("OUT_DIR not set by cargo");
     let out_bindings = Path::new(&out_dir).join("bindings.rs");
 
@@ -151,4 +152,9 @@ fn main() {
     }
 
     build.compile("abieos");
+}
+
+#[cfg(not(feature = "cpp-backend"))]
+fn main() {
+    println!("cargo:rerun-if-changed=build.rs");
 }

@@ -35,6 +35,11 @@ const TRANSFER_BIN: &[u8] = &[
 const EOSIO_ABI_JSON: &str = include_str!("../abis/eosio.abi");
 const EOSIO_ABI_BIN: &[u8] = include_bytes!("../abis/eosio.abi.bin");
 
+// Transaction ABI fixture, with a representative transaction from the parity
+// tests. This exercises nested action/auth arrays and raw action data.
+const TRANSACTION_ABI_JSON: &str = include_str!("../abis/transaction.abi.json");
+const TRANSACTION_JSON: &str = r#"{"expiration":"2009-02-13T23:31:31.000","ref_block_num":1234,"ref_block_prefix":5678,"max_net_usage_words":0,"max_cpu_usage_ms":0,"delay_sec":0,"context_free_actions":[],"actions":[{"account":"eosio.token","name":"transfer","authorization":[{"actor":"useraaaaaaaa","permission":"active"}],"data":"608C31C6187315D6708C31C6187315D60100000000000000045359530000000000"}],"transaction_extensions":[]}"#;
+
 /// Backend label baked in at compile time, so saved baselines/reports are
 /// self-describing even when the benchmark id is identical across runs.
 const BACKEND: &str = if cfg!(feature = "rust-backend") {
@@ -47,6 +52,13 @@ fn token_ctx() -> Abieos {
     let a = Abieos::new();
     a.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI)
         .expect("load eosio.token ABI");
+    a
+}
+
+fn transaction_ctx() -> Abieos {
+    let a = Abieos::new();
+    a.set_abi_json("transaction", TRANSACTION_ABI_JSON)
+        .expect("load transaction ABI");
     a
 }
 
@@ -177,6 +189,58 @@ fn bench_codec(c: &mut Criterion) {
     g.finish();
 }
 
+fn bench_transaction_codec(c: &mut Criterion) {
+    let a = transaction_ctx();
+    let transaction_hex = a
+        .json_to_hex("transaction", "transaction", TRANSACTION_JSON)
+        .expect("pack transaction to hex");
+    let transaction_bin = a
+        .json_to_bin("transaction", "transaction", TRANSACTION_JSON)
+        .expect("pack transaction to binary");
+
+    let mut g = c.benchmark_group("transaction_codec");
+
+    g.throughput(Throughput::Bytes(TRANSACTION_JSON.len() as u64));
+    g.bench_function("json_to_hex_transaction", |b| {
+        b.iter(|| {
+            black_box(
+                a.json_to_hex("transaction", "transaction", black_box(TRANSACTION_JSON))
+                    .unwrap(),
+            )
+        });
+    });
+    g.bench_function("json_to_bin_transaction", |b| {
+        b.iter(|| {
+            black_box(
+                a.json_to_bin("transaction", "transaction", black_box(TRANSACTION_JSON))
+                    .unwrap(),
+            )
+        });
+    });
+
+    g.throughput(Throughput::Bytes(transaction_hex.len() as u64));
+    g.bench_function("hex_to_json_transaction", |b| {
+        b.iter(|| {
+            black_box(
+                a.hex_to_json("transaction", "transaction", black_box(&transaction_hex))
+                    .unwrap(),
+            )
+        });
+    });
+
+    g.throughput(Throughput::Bytes(transaction_bin.len() as u64));
+    g.bench_function("bin_to_json_transaction", |b| {
+        b.iter(|| {
+            black_box(
+                a.bin_to_json("transaction", "transaction", black_box(&transaction_bin))
+                    .unwrap(),
+            )
+        });
+    });
+
+    g.finish();
+}
+
 fn label(c: &mut Criterion) {
     // Not a benchmark; just surfaces which backend produced this run in stdout.
     eprintln!("rs_abieos backend under benchmark: {BACKEND}");
@@ -190,6 +254,7 @@ criterion_group!(
     bench_name,
     bench_abi_load,
     bench_abi_convert,
-    bench_codec
+    bench_codec,
+    bench_transaction_codec
 );
 criterion_main!(benches);

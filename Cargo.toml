@@ -14,7 +14,7 @@ keywords = ["eosio", "antelope", "abi", "serialization", "deserialization"]
 
 [features]
 default = ["cpp-backend"]
-cpp-backend = []
+cpp-backend = ["dep:cc", "dep:bindgen"]
 cpp-oracle = ["cpp-backend"]
 rust-backend = []
 
@@ -24,8 +24,8 @@ path = "bin-src/main.rs"
 doc = false
 
 [build-dependencies]
-cc = { version = "1.2.62", features = ["parallel"] }
-bindgen = "0.72.1"
+cc = { version = "1.2.62", features = ["parallel"], optional = true }
+bindgen = { version = "0.72.1", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }

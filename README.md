@@ -114,6 +114,8 @@ Recommended CI checks:
 cargo check
 cargo check --no-default-features --features rust-backend
 cargo check --no-default-features --features "rust-backend cpp-oracle"
+cargo build --no-default-features --features rust-backend --bin rs_abieos
+cargo build --no-default-features --features rust-backend --examples
 ```
 
 The pure-Rust backend keeps the existing safe Rust API:
@@ -324,6 +326,15 @@ rs_abieos = { version = "0.4.0", default-features = false, features = ["rust-bac
 | `rust-backend` + `cpp-oracle` | Pure Rust + C++ Oracle | Yes | Yes |
 
 If you discover any behavioral divergence between the C++ and Rust backends on valid or invalid inputs, please file an issue with the hex or JSON payload to help us expand the parity fixture coverage.
+
+### Default Flip Readiness
+
+The Rust backend is already exercised in CI across Linux, macOS, Windows MSVC,
+and Windows GNU, with additional `cargo check` coverage for cheap Linux cross
+targets. Fuzz/property coverage and benchmark acceptance are documented in
+`FUZZING.md` and `BENCHMARKS.md`; the remaining default-flip gates are parity
+fixture completion, documented error-string differences, release notes, and the
+actual Cargo feature default change.
 
 ---
 
