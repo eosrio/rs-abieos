@@ -1,5 +1,6 @@
 #![allow(clippy::manual_is_multiple_of)]
 
+#[cfg(all(feature = "rust-backend", feature = "cpp-oracle"))]
 #[path = "common/extension_nesting_fixtures.rs"]
 mod extension_nesting_fixtures;
 
