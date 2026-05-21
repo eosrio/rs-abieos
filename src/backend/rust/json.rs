@@ -421,16 +421,19 @@ impl<'a> JsonParser<'a> {
             self.depth -= 1;
             return Ok(Json::Array(values));
         }
+        let mut index = 0usize;
         loop {
+            // Track array index for path context
+            let elem_path = format!("[{}]", index);
             values.push(self.parse_value()?);
             self.skip_ws();
             match self.bump()? {
-                b',' => {}
+                b',' => { index += 1; }
                 b']' => {
                     self.depth -= 1;
                     return Ok(Json::Array(values));
                 }
-                _ => return Err("Missing ',' or ']' after array element".into()),
+                _ => return Err(super::with_field_path(&elem_path, "next element or ']'").into()),
             }
         }
     }
