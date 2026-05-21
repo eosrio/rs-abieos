@@ -13,7 +13,7 @@ impl<'a> Json<'a> {
     pub(crate) fn as_object(&self) -> Result<&[(std::borrow::Cow<'a, str>, Json<'a>)], String> {
         match self {
             Json::Object(fields) => Ok(fields),
-            _ => Err("expected object".into()),
+            _ => Err("Expected {".into()),
         }
     }
 
@@ -140,9 +140,9 @@ impl<'a> JsonParser<'a> {
     }
 
     /// Open a JSON object. Returns `true` if empty. A present non-object
-    /// value errors `"expected object"` (matching `as_object`).
+    /// value errors `"Expected {"` (matching `as_object`).
     pub(crate) fn object_open(&mut self) -> Result<bool, String> {
-        self.expect(b'{', "expected object")?;
+        self.expect(b'{', "Expected {")?;
         self.skip_ws();
         if self.peek() == Some(b'}') {
             self.pos += 1;
