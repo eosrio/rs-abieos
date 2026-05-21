@@ -166,7 +166,7 @@ impl<'a> JsonParser<'a> {
         match self.bump()? {
             b',' => Ok(false),
             b'}' => Ok(true),
-            _ => Err("Missing a comma or '}' after an object member".into()),
+            _ => Err(super::with_field_path("", "object member") + ": Missing ',' or '}'"),
         }
     }
 
