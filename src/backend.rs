@@ -1,4 +1,5 @@
 #[cfg(feature = "cpp-backend")]
+#[allow(dead_code)]
 mod cpp;
 
 #[cfg(feature = "rust-backend")]
