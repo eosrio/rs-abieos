@@ -451,7 +451,7 @@ mod rust_backend_check_error_port {
                     label: "s8 rejects null",
                     ty: "s8",
                     json: "null",
-                    contains: &["expected object"],
+                    contains: &["Expected {"],
                 },
                 JsonErrorCase {
                     label: "s8 rejects empty fixed array",
@@ -475,7 +475,7 @@ mod rust_backend_check_error_port {
                     label: "s8 rejects scalar fixed array",
                     ty: "s8",
                     json: r#"{"a1":2}"#,
-                    contains: &["expected array"],
+                    contains: &["Expected ["],
                 },
             ],
         );
@@ -515,7 +515,7 @@ mod rust_backend_check_error_port {
                     label: "variant rejects null",
                     ty: "v1",
                     json: "null",
-                    contains: &["expected array"],
+                    contains: &["Expected ["],
                 },
                 JsonErrorCase {
                     label: "variant rejects empty array",
@@ -601,7 +601,7 @@ mod rust_backend_check_error_port {
                     label: "s5 rejects null nested struct",
                     ty: "s5",
                     json: r#"{"x1":9,"x2":10,"x3":null}"#,
-                    contains: &["expected object"],
+                    contains: &["Expected {"],
                 },
                 JsonErrorCase {
                     label: "s5 rejects missing nested c1",
@@ -616,13 +616,13 @@ mod rust_backend_check_error_port {
                     // TODO: C++ reports the path-aware shape error
                     // `s5.x3.c2: expected array`; keep this loose until Rust
                     // error propagation preserves that stable path.
-                    contains: &["expected"],
+                    contains: &["Expected"],
                 },
                 JsonErrorCase {
                     label: "s5 rejects scalar nested array member",
                     ty: "s5",
                     json: r#"{"x1":9,"x2":10,"x3":{"c1":4,"c2":[7]}}"#,
-                    contains: &["expected object"],
+                    contains: &["Expected {"],
                 },
             ],
         );
