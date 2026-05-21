@@ -399,17 +399,21 @@ mod cpp_oracle_differential {
                     assert!(!oracle_error.is_empty(), "oracle error should not be empty");
 
                     // Improved parity check for error messages.
-                    // Oracle errors are often shorter; we check that the Rust error
-                    // contains the core message from the Oracle (or vice versa).
+                    // We normalize common prefixes and then check for overlap.
+                    // Uses strip_prefix for safer normalization (per review feedback).
                     let rust_lower = rust_error.to_lowercase();
                     let oracle_lower = oracle_error.to_lowercase();
 
-                    // Check if one error message contains the other (after stripping common prefixes)
-                    let rust_core = rust_lower.replace("failed to serialize json to hex: ", "")
-                                              .replace("failed to deserialize hex to json: ", "");
-                    let oracle_core = oracle_lower.replace("failed to serialize json to hex: ", "");
+                    let rust_core = rust_lower
+                        .strip_prefix("failed to serialize json to hex: ")
+                        .or_else(|| rust_lower.strip_prefix("failed to deserialize hex to json: "))
+                        .unwrap_or(&rust_lower);
 
-                    let messages_overlap = rust_core.contains(&oracle_core) || oracle_core.contains(&rust_core);
+                    let oracle_core = oracle_lower
+                        .strip_prefix("failed to serialize json to hex: ")
+                        .unwrap_or(&oracle_lower);
+
+                    let messages_overlap = rust_core.contains(oracle_core) || oracle_core.contains(rust_core);
 
                     assert!(
                         messages_overlap,
