@@ -277,17 +277,17 @@ mod rust_backend_key_signature_port {
             ErrorCase {
                 ty: "public_key",
                 json: "true",
-                expected_error: "expected string",
+                expected_error: "Expected string",
             },
             ErrorCase {
                 ty: "private_key",
                 json: "true",
-                expected_error: "expected string",
+                expected_error: "Expected string",
             },
             ErrorCase {
                 ty: "signature",
                 json: "true",
-                expected_error: "expected string",
+                expected_error: "Expected string",
             },
             ErrorCase {
                 ty: "public_key",

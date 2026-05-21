@@ -446,3 +446,12 @@ pub unsafe extern "C" fn abieos_delete_contract(
         .map(|ctx| ctx.contracts.remove(&contract).is_some() as abieos_bool)
         .unwrap_or(0)
 }
+
+// Helper for building path-aware error messages (foundation for full parity)
+pub(crate) fn with_field_path(base: &str, field: &str) -> String {
+    if base.is_empty() {
+        format!("in field '{}'", field)
+    } else {
+        format!("{} > {}", base, field)
+    }
+}
