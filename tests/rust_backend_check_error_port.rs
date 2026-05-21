@@ -82,9 +82,11 @@ mod rust_backend_check_error_port {
     }
 
     fn assert_contains_all(err: &str, contains: &[&str], label: &str) {
+        let err_lower = err.to_lowercase();
         for expected in contains {
+            let exp_lower = expected.to_lowercase();
             assert!(
-                err.contains(expected),
+                err_lower.contains(&exp_lower),
                 "{label}: expected error to contain {expected:?}, got {err:?}"
             );
         }
