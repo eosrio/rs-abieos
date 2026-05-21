@@ -166,7 +166,10 @@ impl<'a> JsonParser<'a> {
         match self.bump()? {
             b',' => Ok(false),
             b'}' => Ok(true),
-            _ => Err(super::with_field_path("", "object member") + ": Missing ',' or '}'"),
+            _ => {
+                let path = super::push_field_path("", "object");
+                Err(format!("{}: Missing ',' or '}}'", path))
+            },
         }
     }
 
