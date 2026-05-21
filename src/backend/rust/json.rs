@@ -489,3 +489,5 @@ pub(crate) fn quote_json(s: &str, out: &mut String) {
     }
     out.push('"');
 }
+// TODO(full-parity): Thread current_path through parse_value and all recursive parsers
+// so that errors can report full paths like "in field 'foo.bar[2].baz'"
