@@ -425,7 +425,7 @@ impl<'a> JsonParser<'a> {
         loop {
             // Track array index for path context
             let elem_path = format!("[{}]", index);
-            values.push(self.parse_value()?);
+            values.push(self.parse_value_with_path(&elem_path)?);
             self.skip_ws();
             match self.bump()? {
                 b',' => { index += 1; }
