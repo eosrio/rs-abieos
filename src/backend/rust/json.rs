@@ -455,7 +455,7 @@ impl<'a> JsonParser<'a> {
             // Build path for better errors
             let field_path = super::push_field_path(&current_path, &key);
             self.expect(b':', &super::with_field_path(&field_path, "value"))?;
-            let value = self.parse_value()?;
+            let value = self.parse_value_with_path(&field_path)?;
             fields.push((key, value));
             self.skip_ws();
             match self.bump()? {
