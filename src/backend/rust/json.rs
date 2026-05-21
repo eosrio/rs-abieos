@@ -20,7 +20,7 @@ impl<'a> Json<'a> {
     pub(crate) fn as_array(&self) -> Result<&[Json<'a>], String> {
         match self {
             Json::Array(values) => Ok(values),
-            _ => Err("expected array".into()),
+            _ => Err("Expected [".into()),
         }
     }
 
@@ -112,12 +112,12 @@ impl<'a> JsonParser<'a> {
     // elements. Error strings match `parse_array`/`parse_object` exactly.
 
     /// Open a JSON array. Returns `true` if the array is empty (already
-    /// fully consumed). A present non-array value errors `"expected array"`,
+    /// fully consumed). A present non-array value errors `"Expected ["`,
     /// matching `as_array` on the DOM path.
     pub(crate) fn array_open(&mut self) -> Result<bool, String> {
         self.skip_ws();
         if self.peek() != Some(b'[') {
-            return Err("expected array".into());
+            return Err("Expected [".into());
         }
         self.pos += 1;
         self.skip_ws();
