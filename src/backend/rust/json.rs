@@ -155,7 +155,7 @@ impl<'a> JsonParser<'a> {
     pub(crate) fn member_key(&mut self) -> Result<std::borrow::Cow<'a, str>, String> {
         self.skip_ws();
         let key = self.parse_string()?;
-        self.expect(b':', "Missing a colon after a name of object member")?;
+        self.expect(b':', "Missing ':' after object member name")?;
         Ok(key)
     }
 
@@ -244,7 +244,7 @@ impl<'a> JsonParser<'a> {
                 loop {
                     self.skip_ws();
                     self.parse_string()?;
-                    self.expect(b':', "Missing a colon after a name of object member")?;
+                    self.expect(b':', "Missing ':' after object member name")?;
                     self.skip_value()?;
                     self.skip_ws();
                     match self.bump()? {
@@ -445,7 +445,7 @@ impl<'a> JsonParser<'a> {
         loop {
             self.skip_ws();
             let key = self.parse_string()?;
-            self.expect(b':', "Missing a colon after a name of object member")?;
+            self.expect(b':', "Missing ':' after object member name")?;
             let value = self.parse_value()?;
             fields.push((key, value));
             self.skip_ws();
