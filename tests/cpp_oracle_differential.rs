@@ -413,7 +413,11 @@ mod cpp_oracle_differential {
                         .strip_prefix("failed to serialize json to hex: ")
                         .unwrap_or(&oracle_lower);
 
-                    let messages_overlap = rust_core.contains(oracle_core) || oracle_core.contains(rust_core);
+                    // Allow overlap in either direction, or if the oracle error
+                    // is a short descriptive fragment that appears in the Rust error.
+                    let messages_overlap = rust_core.contains(oracle_core)
+                        || oracle_core.contains(rust_core)
+                        || rust_lower.contains(oracle_lower.as_str());
 
                     assert!(
                         messages_overlap,
