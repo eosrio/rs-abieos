@@ -155,7 +155,7 @@ impl<'a> JsonParser<'a> {
     pub(crate) fn member_key(&mut self) -> Result<std::borrow::Cow<'a, str>, String> {
         self.skip_ws();
         let key = self.parse_string()?;
-        self.expect(b':', "Missing ':' after object member name")?;
+        self.expect(b':', &super::with_field_path("", &key))?;
         Ok(key)
     }
 
