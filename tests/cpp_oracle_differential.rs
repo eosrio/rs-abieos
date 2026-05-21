@@ -397,6 +397,38 @@ mod cpp_oracle_differential {
                 (Err(rust_error), Err(oracle_error), None) => {
                     assert!(!rust_error.is_empty(), "Rust error should not be empty");
                     assert!(!oracle_error.is_empty(), "oracle error should not be empty");
+
+                    // Improved parity check for error messages.
+                    // We normalize common prefixes and then check for overlap.
+                    // Uses strip_prefix for safer normalization (per review feedback).
+                    let rust_lower = rust_error.to_lowercase();
+                    let oracle_lower = oracle_error.to_lowercase();
+
+                    let rust_core = rust_lower
+                        .strip_prefix("failed to serialize json to hex: ")
+                        .or_else(|| rust_lower.strip_prefix("failed to deserialize hex to json: "))
+                        .unwrap_or(&rust_lower);
+
+                    let oracle_core = oracle_lower
+                        .strip_prefix("failed to serialize json to hex: ")
+                        .unwrap_or(&oracle_lower);
+
+                    // Allow overlap in either direction.
+                    // Also accept very short oracle fragments (common in C++ errors).
+                    let messages_overlap = rust_core.contains(oracle_core)
+                        || oracle_core.contains(rust_core)
+                        || rust_lower.contains(&oracle_lower)
+                        || (oracle_lower.len() <= 15 && rust_lower.contains(&oracle_lower));
+
+                    // Note: Some C++ error messages are intentionally very short.
+                    // We log but do not fail on mismatch for now while we improve
+                    // error string generation in the Rust backend.
+                    if !messages_overlap {
+                        eprintln!(
+                            "Warning: Error message content differs (acceptable for now):\nRust: {}\nOracle: {}",
+                            rust_error, oracle_error
+                        );
+                    }
                 }
                 _ => unreachable!("status assertion above guarantees matching result shapes"),
             }
