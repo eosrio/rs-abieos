@@ -445,10 +445,13 @@ impl<'a> JsonParser<'a> {
             self.depth -= 1;
             return Ok(Json::Object(fields));
         }
+        let mut current_path = String::new();
         loop {
             self.skip_ws();
             let key = self.parse_string()?;
-            self.expect(b':', "Missing ':' after object member name")?;
+            // Build path for better errors
+            let field_path = super::push_field_path(&current_path, &key);
+            self.expect(b':', &super::with_field_path(&field_path, "value"))?;
             let value = self.parse_value()?;
             fields.push((key, value));
             self.skip_ws();
@@ -458,7 +461,7 @@ impl<'a> JsonParser<'a> {
                     self.depth -= 1;
                     return Ok(Json::Object(fields));
                 }
-                _ => return Err("Missing a comma or '}' after an object member".into()),
+                _ => return Err(super::with_field_path(&field_path, "next field or '}'").into()),
             }
         }
     }
