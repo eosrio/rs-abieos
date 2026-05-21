@@ -192,8 +192,8 @@ impl<'a> JsonParser<'a> {
                 Ok(Json::Bool(false))
             }
             Some(b'"') => self.parse_string().map(Json::String),
-            Some(b'[') => self.parse_array(),
-            Some(b'{') => self.parse_object(),
+            Some(b'[') => self.parse_array(""),
+            Some(b'{') => self.parse_object(""),
             Some(b'-' | b'0'..=b'9') => self.parse_number().map(Json::String),
             _ => Err("json parse error".into()),
         }
@@ -411,7 +411,7 @@ impl<'a> JsonParser<'a> {
             .map_err(|_| "json parse error".into())
     }
 
-    fn parse_array(&mut self) -> Result<Json<'a>, String> {
+    fn parse_array(&mut self, _path: &str) -> Result<Json<'a>, String> {
         self.expect(b'[', "Expected [")?;
         self.depth += 1;
         let mut values = Vec::new();
@@ -438,7 +438,7 @@ impl<'a> JsonParser<'a> {
         }
     }
 
-    fn parse_object(&mut self) -> Result<Json<'a>, String> {
+    fn parse_object(&mut self, _path: &str) -> Result<Json<'a>, String> {
         self.expect(b'{', "Expected {")?;
         self.depth += 1;
         let mut fields = Vec::new();
