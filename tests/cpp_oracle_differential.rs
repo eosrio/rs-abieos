@@ -397,6 +397,25 @@ mod cpp_oracle_differential {
                 (Err(rust_error), Err(oracle_error), None) => {
                     assert!(!rust_error.is_empty(), "Rust error should not be empty");
                     assert!(!oracle_error.is_empty(), "oracle error should not be empty");
+
+                    // Improved parity check for error messages.
+                    // Oracle errors are often shorter; we check that the Rust error
+                    // contains the core message from the Oracle (or vice versa).
+                    let rust_lower = rust_error.to_lowercase();
+                    let oracle_lower = oracle_error.to_lowercase();
+
+                    // Check if one error message contains the other (after stripping common prefixes)
+                    let rust_core = rust_lower.replace("failed to serialize json to hex: ", "")
+                                              .replace("failed to deserialize hex to json: ", "");
+                    let oracle_core = oracle_lower.replace("failed to serialize json to hex: ", "");
+
+                    let messages_overlap = rust_core.contains(&oracle_core) || oracle_core.contains(&rust_core);
+
+                    assert!(
+                        messages_overlap,
+                        "Error message content mismatch.\nRust: {}\nOracle: {}",
+                        rust_error, oracle_error
+                    );
                 }
                 _ => unreachable!("status assertion above guarantees matching result shapes"),
             }
