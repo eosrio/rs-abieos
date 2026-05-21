@@ -448,7 +448,7 @@ impl<'a> JsonParser<'a> {
             self.depth -= 1;
             return Ok(Json::Object(fields));
         }
-        let mut current_path = String::new();
+        let current_path = String::new();
         loop {
             self.skip_ws();
             let key = self.parse_string()?;
