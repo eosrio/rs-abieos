@@ -27,7 +27,7 @@ impl<'a> Json<'a> {
     pub(crate) fn as_str_like(&self) -> Result<&str, String> {
         match self {
             Json::String(s) => Ok(s.as_ref()),
-            _ => Err("expected string".into()),
+            _ => Err("Expected string".into()),
         }
     }
 }
@@ -135,7 +135,7 @@ impl<'a> JsonParser<'a> {
         match self.bump()? {
             b',' => Ok(false),
             b']' => Ok(true),
-            _ => Err("Missing a comma or ']' after an array element".into()),
+            _ => Err("Missing ',' or ']' after array element".into()),
         }
     }
 
@@ -228,7 +228,7 @@ impl<'a> JsonParser<'a> {
                             self.depth -= 1;
                             return Ok(());
                         }
-                        _ => return Err("Missing a comma or ']' after an array element".into()),
+                        _ => return Err("Missing ',' or ']' after array element".into()),
                     }
                 }
             }
@@ -319,7 +319,7 @@ impl<'a> JsonParser<'a> {
             break;
         }
         self.pos = i.min(src.len());
-        Err("Missing a closing quotation mark in string".into())
+        Err("Missing closing quote in string".into())
     }
 
     fn parse_string_with_escapes(&self, start: usize) -> Result<std::borrow::Cow<'a, str>, String> {
@@ -377,7 +377,7 @@ impl<'a> JsonParser<'a> {
                 _ => out.push(b),
             }
         }
-        Err("Missing a closing quotation mark in string".into())
+        Err("Missing closing quote in string".into())
     }
 
     pub(crate) fn parse_number(&mut self) -> Result<std::borrow::Cow<'a, str>, String> {
@@ -427,7 +427,7 @@ impl<'a> JsonParser<'a> {
                     self.depth -= 1;
                     return Ok(Json::Array(values));
                 }
-                _ => return Err("Missing a comma or ']' after an array element".into()),
+                _ => return Err("Missing ',' or ']' after array element".into()),
             }
         }
     }
