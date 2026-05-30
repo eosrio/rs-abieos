@@ -435,7 +435,7 @@ impl<'a> JsonParser<'a> {
                     self.depth -= 1;
                     return Ok(Json::Array(values));
                 }
-                _ => return Err(super::with_field_path(&elem_path, "next element or ']'").into()),
+                _ => return Err(super::with_field_path(&elem_path, "next element or ']'")),
             }
         }
     }
@@ -466,7 +466,7 @@ impl<'a> JsonParser<'a> {
                     self.depth -= 1;
                     return Ok(Json::Object(fields));
                 }
-                _ => return Err(super::with_field_path(&field_path, "next field or '}'").into()),
+                _ => return Err(super::with_field_path(&field_path, "next field or '}'")),
             }
         }
     }
