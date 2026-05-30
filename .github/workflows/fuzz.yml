@@ -36,13 +36,13 @@ jobs:
           - fuzz_abi_bin_to_json
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install nightly toolchain
         uses: dtolnay/rust-toolchain@nightly
 
       - name: Cache cargo registry & fuzz build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -63,7 +63,7 @@ jobs:
 
       - name: Upload crash artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-artifacts-${{ matrix.target }}
           path: |
