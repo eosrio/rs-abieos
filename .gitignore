@@ -3,6 +3,7 @@
 build
 .idea
 .claude/
+.antigravitycli/
 !target/doc
 
 # cargo-fuzz build/output (fuzz/Cargo.lock is committed for reproducibility)

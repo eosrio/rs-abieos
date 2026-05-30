@@ -314,7 +314,7 @@ Currently, `cpp-backend` is the default to maintain legacy stability. To complet
 
 ```toml
 [dependencies]
-rs_abieos = { version = "0.4.0", default-features = false, features = ["rust-backend"] }
+rs_abieos = { version = "0.5.0", default-features = false, features = ["rust-backend"] }
 ```
 
 ### Build Requirements Matrix
