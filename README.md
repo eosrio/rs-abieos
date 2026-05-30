@@ -90,7 +90,7 @@ cargo add rs_abieos
 
 ### Backend Features
 
-`rs_abieos` now has a staged dual-backend layout:
+`rs_abieos` has a dual-backend layout:
 
 - `cpp-backend` (default): builds and uses the vendored C++ `abieos` library.
 - `rust-backend`: uses the pure-Rust compatibility backend and does not require
@@ -280,7 +280,7 @@ CXX=clang++-18 CC=clang-18 cargo test
 cargo test --target x86_64-pc-windows-gnu
 ```
 
-Pure-Rust backend and oracle migration gates:
+Pure-Rust backend and differential oracle tests:
 
 ```bash
 cargo test --no-default-features --features rust-backend
@@ -326,15 +326,6 @@ rs_abieos = { version = "0.5.0", default-features = false, features = ["rust-bac
 | `rust-backend` + `cpp-oracle` | Pure Rust + C++ Oracle | Yes | Yes |
 
 If you discover any behavioral divergence between the C++ and Rust backends on valid or invalid inputs, please file an issue with the hex or JSON payload to help us expand the parity fixture coverage.
-
-### Default Flip Readiness
-
-The Rust backend is already exercised in CI across Linux, macOS, Windows MSVC,
-and Windows GNU, with additional `cargo check` coverage for cheap Linux cross
-targets. Fuzz/property coverage and benchmark acceptance are documented in
-`FUZZING.md` and `BENCHMARKS.md`; the remaining default-flip gates are parity
-fixture completion, documented error-string differences, release notes, and the
-actual Cargo feature default change.
 
 ---
 
