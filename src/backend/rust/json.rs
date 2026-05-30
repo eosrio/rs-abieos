@@ -169,7 +169,7 @@ impl<'a> JsonParser<'a> {
             _ => {
                 let path = super::push_field_path("", "object");
                 Err(format!("{}: Missing ',' or '}}'", path))
-            },
+            }
         }
     }
 
@@ -428,7 +428,9 @@ impl<'a> JsonParser<'a> {
             values.push(self.parse_value_with_path(&elem_path)?);
             self.skip_ws();
             match self.bump()? {
-                b',' => { index += 1; }
+                b',' => {
+                    index += 1;
+                }
                 b']' => {
                     self.depth -= 1;
                     return Ok(Json::Array(values));
