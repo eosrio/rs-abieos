@@ -13,21 +13,21 @@ impl<'a> Json<'a> {
     pub(crate) fn as_object(&self) -> Result<&[(std::borrow::Cow<'a, str>, Json<'a>)], String> {
         match self {
             Json::Object(fields) => Ok(fields),
-            _ => Err("expected object".into()),
+            _ => Err("Expected {".into()),
         }
     }
 
     pub(crate) fn as_array(&self) -> Result<&[Json<'a>], String> {
         match self {
             Json::Array(values) => Ok(values),
-            _ => Err("expected array".into()),
+            _ => Err("Expected [".into()),
         }
     }
 
     pub(crate) fn as_str_like(&self) -> Result<&str, String> {
         match self {
             Json::String(s) => Ok(s.as_ref()),
-            _ => Err("expected string".into()),
+            _ => Err("Expected string".into()),
         }
     }
 }
@@ -112,12 +112,12 @@ impl<'a> JsonParser<'a> {
     // elements. Error strings match `parse_array`/`parse_object` exactly.
 
     /// Open a JSON array. Returns `true` if the array is empty (already
-    /// fully consumed). A present non-array value errors `"expected array"`,
+    /// fully consumed). A present non-array value errors `"Expected ["`,
     /// matching `as_array` on the DOM path.
     pub(crate) fn array_open(&mut self) -> Result<bool, String> {
         self.skip_ws();
         if self.peek() != Some(b'[') {
-            return Err("expected array".into());
+            return Err("Expected [".into());
         }
         self.pos += 1;
         self.skip_ws();
@@ -135,14 +135,14 @@ impl<'a> JsonParser<'a> {
         match self.bump()? {
             b',' => Ok(false),
             b']' => Ok(true),
-            _ => Err("Missing a comma or ']' after an array element".into()),
+            _ => Err("Missing ',' or ']' after array element".into()),
         }
     }
 
     /// Open a JSON object. Returns `true` if empty. A present non-object
-    /// value errors `"expected object"` (matching `as_object`).
+    /// value errors `"Expected {"` (matching `as_object`).
     pub(crate) fn object_open(&mut self) -> Result<bool, String> {
-        self.expect(b'{', "expected object")?;
+        self.expect(b'{', "Expected {")?;
         self.skip_ws();
         if self.peek() == Some(b'}') {
             self.pos += 1;
@@ -155,7 +155,7 @@ impl<'a> JsonParser<'a> {
     pub(crate) fn member_key(&mut self) -> Result<std::borrow::Cow<'a, str>, String> {
         self.skip_ws();
         let key = self.parse_string()?;
-        self.expect(b':', "Missing a colon after a name of object member")?;
+        self.expect(b':', &super::with_field_path("", &key))?;
         Ok(key)
     }
 
@@ -166,7 +166,10 @@ impl<'a> JsonParser<'a> {
         match self.bump()? {
             b',' => Ok(false),
             b'}' => Ok(true),
-            _ => Err("Missing a comma or '}' after an object member".into()),
+            _ => {
+                let path = super::push_field_path("", "object");
+                Err(format!("{}: Missing ',' or '}}'", path))
+            }
         }
     }
 
@@ -189,8 +192,8 @@ impl<'a> JsonParser<'a> {
                 Ok(Json::Bool(false))
             }
             Some(b'"') => self.parse_string().map(Json::String),
-            Some(b'[') => self.parse_array(),
-            Some(b'{') => self.parse_object(),
+            Some(b'[') => self.parse_array(""),
+            Some(b'{') => self.parse_object(""),
             Some(b'-' | b'0'..=b'9') => self.parse_number().map(Json::String),
             _ => Err("json parse error".into()),
         }
@@ -228,7 +231,7 @@ impl<'a> JsonParser<'a> {
                             self.depth -= 1;
                             return Ok(());
                         }
-                        _ => return Err("Missing a comma or ']' after an array element".into()),
+                        _ => return Err("Missing ',' or ']' after array element".into()),
                     }
                 }
             }
@@ -244,7 +247,7 @@ impl<'a> JsonParser<'a> {
                 loop {
                     self.skip_ws();
                     self.parse_string()?;
-                    self.expect(b':', "Missing a colon after a name of object member")?;
+                    self.expect(b':', "Missing ':' after object member name")?;
                     self.skip_value()?;
                     self.skip_ws();
                     match self.bump()? {
@@ -319,7 +322,7 @@ impl<'a> JsonParser<'a> {
             break;
         }
         self.pos = i.min(src.len());
-        Err("Missing a closing quotation mark in string".into())
+        Err("Missing closing quote in string".into())
     }
 
     fn parse_string_with_escapes(&self, start: usize) -> Result<std::borrow::Cow<'a, str>, String> {
@@ -377,7 +380,7 @@ impl<'a> JsonParser<'a> {
                 _ => out.push(b),
             }
         }
-        Err("Missing a closing quotation mark in string".into())
+        Err("Missing closing quote in string".into())
     }
 
     pub(crate) fn parse_number(&mut self) -> Result<std::borrow::Cow<'a, str>, String> {
@@ -408,7 +411,7 @@ impl<'a> JsonParser<'a> {
             .map_err(|_| "json parse error".into())
     }
 
-    fn parse_array(&mut self) -> Result<Json<'a>, String> {
+    fn parse_array(&mut self, _path: &str) -> Result<Json<'a>, String> {
         self.expect(b'[', "Expected [")?;
         self.depth += 1;
         let mut values = Vec::new();
@@ -418,21 +421,26 @@ impl<'a> JsonParser<'a> {
             self.depth -= 1;
             return Ok(Json::Array(values));
         }
+        let mut index = 0usize;
         loop {
-            values.push(self.parse_value()?);
+            // Track array index for path context
+            let elem_path = format!("[{}]", index);
+            values.push(self.parse_value_with_path(&elem_path)?);
             self.skip_ws();
             match self.bump()? {
-                b',' => {}
+                b',' => {
+                    index += 1;
+                }
                 b']' => {
                     self.depth -= 1;
                     return Ok(Json::Array(values));
                 }
-                _ => return Err("Missing a comma or ']' after an array element".into()),
+                _ => return Err(super::with_field_path(&elem_path, "next element or ']'")),
             }
         }
     }
 
-    fn parse_object(&mut self) -> Result<Json<'a>, String> {
+    fn parse_object(&mut self, _path: &str) -> Result<Json<'a>, String> {
         self.expect(b'{', "Expected {")?;
         self.depth += 1;
         let mut fields = Vec::new();
@@ -442,11 +450,14 @@ impl<'a> JsonParser<'a> {
             self.depth -= 1;
             return Ok(Json::Object(fields));
         }
+        let current_path = String::new();
         loop {
             self.skip_ws();
             let key = self.parse_string()?;
-            self.expect(b':', "Missing a colon after a name of object member")?;
-            let value = self.parse_value()?;
+            // Build path for better errors
+            let field_path = super::push_field_path(&current_path, &key);
+            self.expect(b':', &super::with_field_path(&field_path, "value"))?;
+            let value = self.parse_value_with_path(&field_path)?;
             fields.push((key, value));
             self.skip_ws();
             match self.bump()? {
@@ -455,7 +466,7 @@ impl<'a> JsonParser<'a> {
                     self.depth -= 1;
                     return Ok(Json::Object(fields));
                 }
-                _ => return Err("Missing a comma or '}' after an object member".into()),
+                _ => return Err(super::with_field_path(&field_path, "next field or '}'")),
             }
         }
     }
@@ -479,4 +490,14 @@ pub(crate) fn quote_json(s: &str, out: &mut String) {
         }
     }
     out.push('"');
+}
+// TODO(full-parity): Thread current_path through parse_value and all recursive parsers
+// so that errors can report full paths like "in field 'foo.bar[2].baz'"
+
+// TODO(full-parity): Implement real path threading in parse_value_with_path
+// and update all call sites in parse_object / parse_array.
+impl<'a> JsonParser<'a> {
+    pub(crate) fn parse_value_with_path(&mut self, _path: &str) -> Result<Json<'a>, String> {
+        self.parse_value()
+    }
 }

@@ -11,7 +11,7 @@
 //! instead of a temporary `Vec` plus its `Arc`.
 //!
 //! Semantics mirror the old `AbiDef::from_json` precisely:
-//! - top-level / element non-object → `"expected object"`
+//! - top-level / element non-object → `"Expected {"`
 //! - missing key → field default (empty string / `0` / empty list)
 //! - first occurrence of a key wins (matches `obj_field`'s `find`)
 //! - present-but-not-string scalar slot → `"expected string"`
