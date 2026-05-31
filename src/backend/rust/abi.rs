@@ -444,10 +444,21 @@ impl Abi {
     }
 
     pub(crate) fn bin_to_json(&mut self, type_name: &str, data: &[u8]) -> Result<String, String> {
-        let mut r = Reader::new(data);
         let mut out = String::new();
-        self.read_json_value(type_name, &mut r, &mut out, true)?;
+        self.bin_to_json_into(type_name, data, &mut out)?;
         Ok(out)
+    }
+
+    /// Deserialize into a caller-owned `out`, reusing its allocation (clears it first).
+    pub(crate) fn bin_to_json_into(
+        &mut self,
+        type_name: &str,
+        data: &[u8],
+        out: &mut String,
+    ) -> Result<(), String> {
+        out.clear();
+        let mut r = Reader::new(data);
+        self.read_json_value(type_name, &mut r, out, true)
     }
 
     fn read_json_value(

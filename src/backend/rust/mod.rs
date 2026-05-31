@@ -1,5 +1,7 @@
 mod abi;
 mod abi_def;
+mod handle;
+pub use handle::AbiHandle;
 mod abi_json;
 mod builtins;
 mod crypto;

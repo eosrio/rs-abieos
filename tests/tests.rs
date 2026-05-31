@@ -854,6 +854,144 @@ mod tests {
         let result = contract.get_type_for_action("nonexistent");
         assert!(result.is_err(), "non-existent action should fail");
     }
+
+    // ---- new (0.6.0) hot-loop native methods ----
+
+    #[test]
+    fn bin_to_json_native_matches_string_account() {
+        let abieos = Abieos::new();
+        abieos.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI).unwrap();
+        let want = abieos
+            .bin_to_json("eosio.token", "transfer", BIN_ACTION_TRANSFER)
+            .unwrap();
+        let got = abieos
+            .bin_to_json_native(EOSIO_TOKEN_U64, "transfer", BIN_ACTION_TRANSFER)
+            .unwrap();
+        assert_eq!(want, got);
+        let mut out = String::from("stale");
+        abieos
+            .bin_to_json_native_into(EOSIO_TOKEN_U64, "transfer", BIN_ACTION_TRANSFER, &mut out)
+            .unwrap();
+        assert_eq!(out, want, "_into clears + reuses the buffer");
+    }
+
+    #[test]
+    fn json_to_bin_native_matches() {
+        let abieos = Abieos::new();
+        abieos.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI).unwrap();
+        let json = r#"{"from":"alice","to":"bob","quantity":"1.0000 EOS","memo":"Hello!"}"#;
+        let want = abieos.json_to_bin("eosio.token", "transfer", json).unwrap();
+        let got = abieos
+            .json_to_bin_native(EOSIO_TOKEN_U64, "transfer", json)
+            .unwrap();
+        assert_eq!(want, got);
+    }
+
+    #[test]
+    fn decode_table_row_native_fuses_lookup_and_decode() {
+        let abieos = Abieos::new();
+        abieos
+            .set_abi_hex_native(EOSIO_TOKEN_U64, EOSIO_TOKEN_HEX_ABI)
+            .unwrap();
+        let accounts = abieos.string_to_name("accounts").unwrap();
+        // an `accounts` row is {balance: asset}; encode one, then decode by table name
+        let bin = abieos
+            .json_to_bin_native(EOSIO_TOKEN_U64, "account", r#"{"balance":"1.0000 EOS"}"#)
+            .unwrap();
+        let decoded = abieos
+            .decode_table_row_native(EOSIO_TOKEN_U64, accounts, &bin)
+            .unwrap();
+        assert!(decoded.contains("1.0000 EOS"));
+        // fused == the two-step path
+        let ty = abieos
+            .get_type_for_table_native(EOSIO_TOKEN_U64, accounts)
+            .unwrap();
+        assert_eq!(ty, "account");
+        assert_eq!(
+            decoded,
+            abieos.bin_to_json_native(EOSIO_TOKEN_U64, &ty, &bin).unwrap()
+        );
+        let mut out = String::new();
+        abieos
+            .decode_table_row_native_into(EOSIO_TOKEN_U64, accounts, &bin, &mut out)
+            .unwrap();
+        assert_eq!(out, decoded);
+    }
+
+    #[test]
+    fn get_type_for_action_result_native_errs_when_absent() {
+        let abieos = Abieos::new();
+        abieos
+            .set_abi_hex_native(EOSIO_TOKEN_U64, EOSIO_TOKEN_HEX_ABI)
+            .unwrap();
+        let transfer = abieos.string_to_name("transfer").unwrap();
+        // eosio.token declares no action_results
+        assert!(abieos
+            .get_type_for_action_result_native(EOSIO_TOKEN_U64, transfer)
+            .is_err());
+    }
+
+    // ---- new (0.6.0) AbiHandle (rust-backend only) ----
+
+    #[cfg(feature = "rust-backend")]
+    #[test]
+    fn abi_handle_decodes_table_and_action() {
+        use rs_abieos::AbiHandle;
+        let abieos = Abieos::new();
+        let accounts = abieos.string_to_name("accounts").unwrap();
+        abieos
+            .set_abi_hex_native(EOSIO_TOKEN_U64, EOSIO_TOKEN_HEX_ABI)
+            .unwrap();
+        let bin = abieos
+            .json_to_bin_native(EOSIO_TOKEN_U64, "account", r#"{"balance":"1.0000 EOS"}"#)
+            .unwrap();
+
+        let mut h = AbiHandle::from_hex(EOSIO_TOKEN_HEX_ABI).unwrap();
+        assert_eq!(h.type_for_table(accounts), Some("account"));
+        let decoded = h.decode_table_row(accounts, &bin).unwrap();
+        assert!(decoded.contains("1.0000 EOS"));
+        // standalone handle matches the context decoder for an action too
+        assert_eq!(
+            h.bin_to_json("transfer", BIN_ACTION_TRANSFER).unwrap(),
+            abieos
+                .bin_to_json_native(EOSIO_TOKEN_U64, "transfer", BIN_ACTION_TRANSFER)
+                .unwrap()
+        );
+        // undeclared table -> Err (preserve-raw-value territory for a delta indexer)
+        let nope = abieos.string_to_name("nope").unwrap();
+        assert!(h.decode_table_row(nope, &bin).is_err());
+        // from_json and from_bin produce the same handle behaviour
+        let mut out = String::new();
+        h.decode_table_row_into(accounts, &bin, &mut out).unwrap();
+        assert_eq!(out, decoded);
+    }
+
+    #[cfg(feature = "rust-backend")]
+    #[test]
+    fn abi_handle_versioned_store() {
+        use rs_abieos::AbiHandle;
+        use std::collections::BTreeMap;
+        // the intended shape: per-account versions keyed by valid_from block, range-queried
+        // for "the version active at block N" — no delete/set churn.
+        let mut versions: BTreeMap<u32, AbiHandle> = BTreeMap::new();
+        versions.insert(100, AbiHandle::from_hex(EOSIO_TOKEN_HEX_ABI).unwrap());
+        versions.insert(200, AbiHandle::from_hex(EOSIO_TOKEN_HEX_ABI).unwrap());
+        let active_at = |b: u32| versions.range(..=b).next_back().map(|(k, _)| *k);
+        assert_eq!(active_at(150), Some(100));
+        assert_eq!(active_at(250), Some(200));
+        assert_eq!(active_at(50), None);
+
+        let abieos = Abieos::new();
+        abieos
+            .set_abi_hex_native(EOSIO_TOKEN_U64, EOSIO_TOKEN_HEX_ABI)
+            .unwrap();
+        let accounts = abieos.string_to_name("accounts").unwrap();
+        let bin = abieos
+            .json_to_bin_native(EOSIO_TOKEN_U64, "account", r#"{"balance":"5.0000 EOS"}"#)
+            .unwrap();
+        let h = versions.get_mut(&100).unwrap();
+        assert!(h.decode_table_row(accounts, &bin).unwrap().contains("5.0000 EOS"));
+    }
 }
 
 mod samples {

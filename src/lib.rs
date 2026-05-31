@@ -31,6 +31,17 @@ fn string_from_ptr(ptr: *const c_char) -> String {
     }
 }
 
+/// Copy a (non-null) C string result into `out`, reusing its allocation. Used by the
+/// `*_into` hot-loop methods so a per-call `String` isn't allocated each time.
+fn cstr_push(ptr: *const c_char, out: &mut String) -> Result<(), AbieosError> {
+    let s = unsafe { CStr::from_ptr(ptr) }
+        .to_str()
+        .map_err(|_| AbieosError::BinToJson("invalid utf-8 in result".into()))?;
+    out.clear();
+    out.push_str(s);
+    Ok(())
+}
+
 /// Abieos is a Rust wrapper for the abieos C library.
 ///
 /// # Thread Safety
@@ -292,7 +303,19 @@ impl Abieos {
         }
     }
 
-    /// Load a contract ABI to memory (JSON format)
+    /// Load a contract ABI to memory (JSON format).
+    ///
+    /// # Replacing an already-loaded ABI
+    ///
+    /// A context holds **one ABI per account**. Loading another ABI for an account that is
+    /// already loaded behaves differently per backend: the **cpp-backend** silently keeps the
+    /// existing ABI (`std::map::insert` is a no-op on an existing key), while the
+    /// **rust-backend** overwrites it (`HashMap::insert`). To replace an ABI portably, call
+    /// [`delete_contract`](Self::delete_contract) first, then `set_abi`.
+    ///
+    /// For decoding historical data where the active ABI changes over time (per `setabi`),
+    /// prefer [`AbiHandle`](crate::AbiHandle) (rust-backend): parse each version once and keep
+    /// your own `(account, valid_from)` map — no per-version reload or `delete`/`set` churn.
     pub fn set_abi_json(&self, contract: &str, abi_json: &str) -> Result<bool, AbieosError> {
         match self.string_to_name(contract) {
             Ok(contract_u64) => unsafe {
@@ -563,6 +586,132 @@ impl Abieos {
             } else {
                 Ok(string_from_ptr(p))
             }
+        }
+    }
+
+    /// Deserialize binary into JSON (u64 account name).
+    ///
+    /// Like [`bin_to_json`](Self::bin_to_json) but takes the account as a `u64`, skipping the
+    /// `string_to_name` round-trip — for hot per-row loops where you already hold the name.
+    pub fn bin_to_json_native(
+        &self,
+        account: u64,
+        datatype: &str,
+        bin: &[u8],
+    ) -> Result<String, AbieosError> {
+        let ctx = self.ctx();
+        let datatype = CString::new(datatype)
+            .map_err(|_| AbieosError::BinToJson("interior NUL byte in input".into()))?;
+        unsafe {
+            let p = abieos_bin_to_json(
+                ctx,
+                account,
+                datatype.as_ptr(),
+                bin.as_ptr() as *const c_char,
+                bin.len(),
+            );
+            if p.is_null() {
+                Err(AbieosError::BinToJson(self.get_error()))
+            } else {
+                Ok(string_from_ptr(p))
+            }
+        }
+    }
+
+    /// Like [`bin_to_json_native`](Self::bin_to_json_native) but writes into `out`, reusing its
+    /// allocation — no per-call `String` allocation once `out` is warm.
+    pub fn bin_to_json_native_into(
+        &self,
+        account: u64,
+        datatype: &str,
+        bin: &[u8],
+        out: &mut String,
+    ) -> Result<(), AbieosError> {
+        let ctx = self.ctx();
+        let datatype = CString::new(datatype)
+            .map_err(|_| AbieosError::BinToJson("interior NUL byte in input".into()))?;
+        unsafe {
+            let p = abieos_bin_to_json(
+                ctx,
+                account,
+                datatype.as_ptr(),
+                bin.as_ptr() as *const c_char,
+                bin.len(),
+            );
+            if p.is_null() {
+                Err(AbieosError::BinToJson(self.get_error()))
+            } else {
+                cstr_push(p, out)
+            }
+        }
+    }
+
+    /// Decode a table row in one call: resolve `table`'s struct type and deserialize `bin`
+    /// (the `contract_row` `value`) into JSON. The common operation for a delta indexer —
+    /// fuses [`get_type_for_table_native`](Self::get_type_for_table_native) and
+    /// [`bin_to_json_native`](Self::bin_to_json_native).
+    pub fn decode_table_row_native(
+        &self,
+        account: u64,
+        table: u64,
+        bin: &[u8],
+    ) -> Result<String, AbieosError> {
+        let datatype = self.get_type_for_table_native(account, table)?;
+        self.bin_to_json_native(account, &datatype, bin)
+    }
+
+    /// Like [`decode_table_row_native`](Self::decode_table_row_native) but writes into `out`,
+    /// reusing its allocation.
+    pub fn decode_table_row_native_into(
+        &self,
+        account: u64,
+        table: u64,
+        bin: &[u8],
+        out: &mut String,
+    ) -> Result<(), AbieosError> {
+        let datatype = self.get_type_for_table_native(account, table)?;
+        self.bin_to_json_native_into(account, &datatype, bin, out)
+    }
+
+    /// Serialize JSON into binary (output as binary, u64 account name).
+    pub fn json_to_bin_native(
+        &self,
+        account: u64,
+        datatype: &str,
+        json: &str,
+    ) -> Result<Vec<u8>, AbieosError> {
+        let ctx = self.ctx();
+        let datatype = CString::new(datatype)
+            .map_err(|_| AbieosError::JsonToBin("interior NUL byte in input".into()))?;
+        let json = CString::new(json)
+            .map_err(|_| AbieosError::JsonToBin("interior NUL byte in input".into()))?;
+        unsafe {
+            match abieos_json_to_bin_reorderable(ctx, account, datatype.as_ptr(), json.as_ptr()) {
+                1 => {
+                    let p = abieos_get_bin_data(ctx);
+                    let len = abieos_get_bin_size(ctx);
+                    let mut result: Vec<c_char> = Vec::with_capacity(len as usize);
+                    std::ptr::copy_nonoverlapping(p, result.as_mut_ptr(), len as usize);
+                    result.set_len(len as usize);
+                    Ok(result.iter().map(|&c| c as u8).collect())
+                }
+                _ => Err(AbieosError::JsonToBin(self.get_error())),
+            }
+        }
+    }
+
+    /// Get the type for an action result (u64 names as input).
+    pub fn get_type_for_action_result_native(
+        &self,
+        contract: u64,
+        action: u64,
+    ) -> Result<String, AbieosError> {
+        let ctx = self.ctx();
+        let p = unsafe { abieos_get_type_for_action_result(ctx, contract, action) };
+        if p.is_null() {
+            Err(AbieosError::GetTypeForActionResult(self.get_error()))
+        } else {
+            Ok(string_from_ptr(p))
         }
     }
 

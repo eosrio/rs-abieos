@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-31
+
+### Added
+- `bin_to_json_native`, `json_to_bin_native`, and `get_type_for_action_result_native` —
+  `u64`-account forms that skip the `string_to_name` round-trip, for hot per-row
+  decode loops where the account name is already a `u64`.
+- `decode_table_row_native` / `decode_table_row_native_into` — fuse the table-type
+  lookup and `bin_to_json` so a `contract_row` `value` decodes in one call.
+- `bin_to_json_native_into` and `decode_table_row_native_into` — buffer-reuse forms
+  that write into a caller-owned `&mut String`, avoiding a per-call allocation.
+- **`AbiHandle`** (rust-backend only) — a standalone, pre-parsed ABI you decode against
+  directly, with no `abieos_context` and no `set_abi`/`delete_contract` churn.
+  `from_json` / `from_bin` / `from_hex`, `type_for_table` / `type_for_action`,
+  `bin_to_json` (+`_into`), and `decode_table_row` (+`_into`). Intended for historical
+  delta/action decoders: parse each ABI version once and keep your own
+  `(account, valid_from)` map, range-queried for the version active at a block.
+
+### Documented
+- `set_abi*` replacement behavior differs by backend — the cpp-backend keeps the
+  existing ABI for an already-loaded account (`std::map::insert` no-op) while the
+  rust-backend overwrites (`HashMap::insert`). Call `delete_contract` first to replace
+  portably, or use `AbiHandle` for versioned decoding. (Original method behavior
+  unchanged; documentation only.)
+
 ## [0.5.0] - 2026-05-30
 
 ### Added
