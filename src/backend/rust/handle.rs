@@ -77,7 +77,9 @@ impl AbiHandle {
     pub fn decode_table_row(&mut self, table: u64, bin: &[u8]) -> Result<String, AbieosError> {
         let ty = self
             .type_for_table(table)
-            .ok_or_else(|| AbieosError::GetTypeForTable(format!("table {table} not declared in ABI")))?
+            .ok_or_else(|| {
+                AbieosError::GetTypeForTable(format!("table {table} not declared in ABI"))
+            })?
             .to_owned();
         self.bin_to_json(&ty, bin)
     }
@@ -91,7 +93,9 @@ impl AbiHandle {
     ) -> Result<(), AbieosError> {
         let ty = self
             .type_for_table(table)
-            .ok_or_else(|| AbieosError::GetTypeForTable(format!("table {table} not declared in ABI")))?
+            .ok_or_else(|| {
+                AbieosError::GetTypeForTable(format!("table {table} not declared in ABI"))
+            })?
             .to_owned();
         self.bin_to_json_into(&ty, bin, out)
     }

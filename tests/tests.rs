@@ -860,7 +860,9 @@ mod tests {
     #[test]
     fn bin_to_json_native_matches_string_account() {
         let abieos = Abieos::new();
-        abieos.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI).unwrap();
+        abieos
+            .set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI)
+            .unwrap();
         let want = abieos
             .bin_to_json("eosio.token", "transfer", BIN_ACTION_TRANSFER)
             .unwrap();
@@ -878,7 +880,9 @@ mod tests {
     #[test]
     fn json_to_bin_native_matches() {
         let abieos = Abieos::new();
-        abieos.set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI).unwrap();
+        abieos
+            .set_abi_hex("eosio.token", EOSIO_TOKEN_HEX_ABI)
+            .unwrap();
         let json = r#"{"from":"alice","to":"bob","quantity":"1.0000 EOS","memo":"Hello!"}"#;
         let want = abieos.json_to_bin("eosio.token", "transfer", json).unwrap();
         let got = abieos
@@ -909,7 +913,9 @@ mod tests {
         assert_eq!(ty, "account");
         assert_eq!(
             decoded,
-            abieos.bin_to_json_native(EOSIO_TOKEN_U64, &ty, &bin).unwrap()
+            abieos
+                .bin_to_json_native(EOSIO_TOKEN_U64, &ty, &bin)
+                .unwrap()
         );
         let mut out = String::new();
         abieos
@@ -990,7 +996,10 @@ mod tests {
             .json_to_bin_native(EOSIO_TOKEN_U64, "account", r#"{"balance":"5.0000 EOS"}"#)
             .unwrap();
         let h = versions.get_mut(&100).unwrap();
-        assert!(h.decode_table_row(accounts, &bin).unwrap().contains("5.0000 EOS"));
+        assert!(h
+            .decode_table_row(accounts, &bin)
+            .unwrap()
+            .contains("5.0000 EOS"));
     }
 }
 
