@@ -441,7 +441,9 @@ mod cpp_oracle_differential {
         }
 
         hex.as_bytes()
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| {
                 let pair = std::str::from_utf8(pair).map_err(|e| e.to_string())?;
                 u8::from_str_radix(pair, 16).map_err(|e| e.to_string())

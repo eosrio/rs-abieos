@@ -63,6 +63,46 @@ jobs:
           # cpp-oracle (runs both)
           cargo check --all-targets --no-default-features --features "rust-backend cpp-oracle"
 
+  # `Cargo.toml` `rust-version` is not enforced by the @stable jobs above.
+  # This job builds and tests on that exact compiler.
+  msrv:
+    name: MSRV (1.95)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake
+
+      - name: Install Rust toolchain (MSRV)
+        # Keep this pin in sync with `rust-version` in Cargo.toml.
+        uses: dtolnay/rust-toolchain@1.95
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-msrv-1.95-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-msrv-1.95-cargo-
+
+      - name: Test (C++ backend)
+        run: cargo test --all-targets
+
+      - name: Test (Rust backend)
+        run: cargo test --all-targets --no-default-features --features rust-backend
+
+      - name: Check Rust backend against C++ oracle
+        run: cargo check --all-targets --no-default-features --features "rust-backend cpp-oracle"
+
   test:
     name: Test (C++ backend, Ubuntu)
     runs-on: ubuntu-latest

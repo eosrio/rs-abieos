@@ -229,7 +229,7 @@ fn ripemd160(data: &[u8]) -> [u8; 20] {
     let mut h3 = 0x1032_5476u32;
     let mut h4 = 0xc3d2_e1f0u32;
 
-    for chunk in msg.chunks_exact(64) {
+    for chunk in msg.as_chunks::<64>().0 {
         let mut x = [0u32; 16];
         for (i, word) in x.iter_mut().enumerate() {
             let start = i * 4;
