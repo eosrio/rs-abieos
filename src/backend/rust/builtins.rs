@@ -1,6 +1,6 @@
-use super::crypto::{read_key_like, write_key_like, KeyKind};
+use super::crypto::{KeyKind, read_key_like, write_key_like};
 use super::hex::{hex_decode, hex_encode};
-use super::json::{quote_json, Json};
+use super::json::{Json, quote_json};
 use super::name::{name_to_string_value, string_to_name_value};
 use super::stream::{Reader, Writer};
 use super::symbol::{
@@ -321,10 +321,10 @@ fn format_finite_float_json(value: f64) -> String {
 
     let fixed = value.to_string();
     if fixed.contains('e') || fixed.contains('E') {
-        if let Some(expanded) = expand_exponent_float(&fixed) {
-            if expanded.len() <= 25 {
-                return expanded;
-            }
+        if let Some(expanded) = expand_exponent_float(&fixed)
+            && expanded.len() <= 25
+        {
+            return expanded;
         }
     } else if fixed.len() <= 25 {
         return fixed;
@@ -360,11 +360,17 @@ fn expand_exponent_float(s: &str) -> Option<String> {
     }
     if decimal_pos <= 0 {
         out.push_str("0.");
-        out.extend(std::iter::repeat('0').take(decimal_pos.unsigned_abs() as usize));
+        out.extend(std::iter::repeat_n(
+            '0',
+            decimal_pos.unsigned_abs() as usize,
+        ));
         out.push_str(&digits);
     } else if decimal_pos as usize >= digits.len() {
         out.push_str(&digits);
-        out.extend(std::iter::repeat('0').take(decimal_pos as usize - digits.len()));
+        out.extend(std::iter::repeat_n(
+            '0',
+            decimal_pos as usize - digits.len(),
+        ));
     } else {
         let fractional = digits.split_off(decimal_pos as usize);
         out.push_str(&digits);

@@ -5,7 +5,8 @@
 #[cfg(test)]
 mod tests {
     use crate::samples::{
-        BIN_ACTION_TRANSFER, EOSIO_TOKEN_HEX_ABI, EOSIO_TOKEN_U64, HEX_ACTION_TRANSFER,
+        ACTION_RESULT_ABI_JSON, BIN_ACTION_TRANSFER, EOSIO_TOKEN_HEX_ABI, EOSIO_TOKEN_U64,
+        HEX_ACTION_TRANSFER,
     };
     use rs_abieos::Abieos;
 
@@ -70,17 +71,21 @@ mod tests {
     #[test]
     fn json_to_hex_c_null_context_is_err() {
         let abieos = Abieos::from_context(std::ptr::null_mut());
-        assert!(abieos
-            .json_to_hex_c(c"eosio.token", c"transfer", c"{}")
-            .is_err());
+        assert!(
+            abieos
+                .json_to_hex_c(c"eosio.token", c"transfer", c"{}")
+                .is_err()
+        );
     }
 
     #[test]
     fn hex_to_json_c_null_context_is_err() {
         let abieos = Abieos::from_context(std::ptr::null_mut());
-        assert!(abieos
-            .hex_to_json_c(c"eosio.token", c"transfer", c"00")
-            .is_err());
+        assert!(
+            abieos
+                .hex_to_json_c(c"eosio.token", c"transfer", c"00")
+                .is_err()
+        );
     }
 
     #[test]
@@ -236,10 +241,33 @@ mod tests {
         assert_eq!(type_name.is_err(), true);
     }
 
-    #[ignore]
     #[test]
     fn get_type_for_action_result() {
-        // todo: Find example for action result
+        let abieos: Abieos = Abieos::new();
+        abieos
+            .set_abi_json("eosio.token", ACTION_RESULT_ABI_JSON)
+            .unwrap();
+        let result_type = abieos
+            .get_type_for_action_result("eosio.token", "getbalance")
+            .unwrap();
+        assert_eq!(result_type, "asset");
+
+        let getbalance_u64 = abieos.string_to_name("getbalance").unwrap();
+        let native_type = abieos
+            .get_type_for_action_result_native(EOSIO_TOKEN_U64, getbalance_u64)
+            .unwrap();
+        assert_eq!(native_type, "asset");
+
+        assert!(
+            abieos
+                .get_type_for_action_result("eosio.token", "unknown")
+                .is_err()
+        );
+        assert!(
+            abieos
+                .get_type_for_action_result("unknown", "getbalance")
+                .is_err()
+        );
     }
 
     #[test]
@@ -535,6 +563,22 @@ mod tests {
     }
 
     #[test]
+    fn contract_json_to_bin_and_bin_to_json() {
+        let abieos: Abieos = Abieos::new();
+        let mut contract = abieos.contract(rs_abieos::NameLike::StringRef("eosio.token"));
+        contract
+            .load_abi(rs_abieos::AbiLike::Hex(EOSIO_TOKEN_HEX_ABI.to_string()))
+            .unwrap();
+
+        let json = r#"{"from":"alice","to":"bob","quantity":"1.0000 EOS","memo":"Hello!"}"#;
+        let bin = contract.json_to_bin("transfer", json).unwrap();
+        assert_eq!(bin, BIN_ACTION_TRANSFER);
+
+        let json_back = contract.bin_to_json("transfer", &bin).unwrap();
+        assert_eq!(json_back, json);
+    }
+
+    #[test]
     fn contract_get_type_for_table() {
         let abieos: Abieos = Abieos::new();
         let name = "eosio.token";
@@ -545,6 +589,19 @@ mod tests {
 
         let table_type = contract.get_type_for_table("accounts").unwrap();
         assert_eq!(table_type, "account");
+    }
+
+    #[test]
+    fn contract_get_type_for_action_result() {
+        let abieos: Abieos = Abieos::new();
+        let mut contract = abieos.contract(rs_abieos::NameLike::StringRef("eosio.token"));
+        contract
+            .load_abi(rs_abieos::AbiLike::Json(ACTION_RESULT_ABI_JSON.to_string()))
+            .unwrap();
+
+        let result_type = contract.get_type_for_action_result("getbalance").unwrap();
+        assert_eq!(result_type, "asset");
+        assert!(contract.get_type_for_action_result("unknown").is_err());
     }
 
     // --- C-string variants ---
@@ -700,12 +757,16 @@ mod tests {
 
         // Delete one, other should still work
         abieos.delete_contract("eosio.token").unwrap();
-        assert!(abieos
-            .get_type_for_action("eosio.token", "transfer")
-            .is_err());
-        assert!(abieos
-            .get_type_for_action("testcontract", "transfer")
-            .is_ok());
+        assert!(
+            abieos
+                .get_type_for_action("eosio.token", "transfer")
+                .is_err()
+        );
+        assert!(
+            abieos
+                .get_type_for_action("testcontract", "transfer")
+                .is_ok()
+        );
     }
 
     #[test]
@@ -932,12 +993,14 @@ mod tests {
             .unwrap();
         let transfer = abieos.string_to_name("transfer").unwrap();
         // eosio.token declares no action_results
-        assert!(abieos
-            .get_type_for_action_result_native(EOSIO_TOKEN_U64, transfer)
-            .is_err());
+        assert!(
+            abieos
+                .get_type_for_action_result_native(EOSIO_TOKEN_U64, transfer)
+                .is_err()
+        );
     }
 
-    // ---- new (0.6.0) AbiHandle (rust-backend only) ----
+    // ---- AbiHandle (rust-backend only) ----
 
     #[cfg(feature = "rust-backend")]
     #[test]
@@ -974,6 +1037,91 @@ mod tests {
 
     #[cfg(feature = "rust-backend")]
     #[test]
+    fn abi_handle_full_codec_and_action_results() {
+        use rs_abieos::AbiHandle;
+
+        let abieos = Abieos::new();
+        let transfer_u64 = abieos.string_to_name("transfer").unwrap();
+        let getbalance_u64 = abieos.string_to_name("getbalance").unwrap();
+        let unknown_u64 = abieos.string_to_name("unknown").unwrap();
+
+        let mut token_handle = AbiHandle::from_hex(EOSIO_TOKEN_HEX_ABI).unwrap();
+        assert_eq!(token_handle.type_for_action(transfer_u64), Some("transfer"));
+        assert_eq!(token_handle.type_for_action(unknown_u64), None);
+
+        let transfer_json =
+            r#"{"from":"alice","to":"bob","quantity":"1.0000 EOS","memo":"Hello!"}"#;
+
+        // json_to_bin & json_to_bin_into & json_to_hex
+        let bin = token_handle.json_to_bin("transfer", transfer_json).unwrap();
+        assert_eq!(bin, BIN_ACTION_TRANSFER);
+
+        let mut bin_buf = vec![0xFF; 8];
+        token_handle
+            .json_to_bin_into("transfer", transfer_json, &mut bin_buf)
+            .unwrap();
+        assert_eq!(bin_buf, BIN_ACTION_TRANSFER);
+
+        let hex = token_handle.json_to_hex("transfer", transfer_json).unwrap();
+        assert_eq!(hex, HEX_ACTION_TRANSFER);
+
+        // hex_to_json & hex_to_json_into
+        let decoded_from_hex = token_handle
+            .hex_to_json("transfer", HEX_ACTION_TRANSFER)
+            .unwrap();
+        assert_eq!(decoded_from_hex, transfer_json);
+
+        let mut json_buf = String::from("stale");
+        token_handle
+            .hex_to_json_into("transfer", HEX_ACTION_TRANSFER, &mut json_buf)
+            .unwrap();
+        assert_eq!(json_buf, transfer_json);
+
+        // decode_action & decode_action_into
+        let action_json = token_handle
+            .decode_action(transfer_u64, BIN_ACTION_TRANSFER)
+            .unwrap();
+        assert_eq!(action_json, transfer_json);
+
+        json_buf.clear();
+        token_handle
+            .decode_action_into(transfer_u64, BIN_ACTION_TRANSFER, &mut json_buf)
+            .unwrap();
+        assert_eq!(json_buf, transfer_json);
+        assert!(
+            token_handle
+                .decode_action(unknown_u64, BIN_ACTION_TRANSFER)
+                .is_err()
+        );
+
+        // action_results via AbiHandle::from_json & AbiHandle::from_bin
+        let abi_bin = abieos.abi_json_to_bin(ACTION_RESULT_ABI_JSON).unwrap();
+        let mut ar_handle = AbiHandle::from_bin(&abi_bin).unwrap();
+        assert_eq!(
+            ar_handle.type_for_action_result(getbalance_u64),
+            Some("asset")
+        );
+        assert_eq!(ar_handle.type_for_action_result(unknown_u64), None);
+
+        let asset_bin = ar_handle.json_to_bin("asset", r#""42.0000 EOS""#).unwrap();
+        let result_json = ar_handle
+            .decode_action_result(getbalance_u64, &asset_bin)
+            .unwrap();
+        assert_eq!(result_json, r#""42.0000 EOS""#);
+
+        ar_handle
+            .decode_action_result_into(getbalance_u64, &asset_bin, &mut json_buf)
+            .unwrap();
+        assert_eq!(json_buf, r#""42.0000 EOS""#);
+        assert!(
+            ar_handle
+                .decode_action_result(unknown_u64, &asset_bin)
+                .is_err()
+        );
+    }
+
+    #[cfg(feature = "rust-backend")]
+    #[test]
     fn abi_handle_versioned_store() {
         use rs_abieos::AbiHandle;
         use std::collections::BTreeMap;
@@ -996,10 +1144,11 @@ mod tests {
             .json_to_bin_native(EOSIO_TOKEN_U64, "account", r#"{"balance":"5.0000 EOS"}"#)
             .unwrap();
         let h = versions.get_mut(&100).unwrap();
-        assert!(h
-            .decode_table_row(accounts, &bin)
-            .unwrap()
-            .contains("5.0000 EOS"));
+        assert!(
+            h.decode_table_row(accounts, &bin)
+                .unwrap()
+                .contains("5.0000 EOS")
+        );
     }
 }
 
@@ -1015,48 +1164,28 @@ mod samples {
         83, 0, 0, 0, 0, 6, 72, 101, 108, 108, 111, 33,
     ];
 
-    pub const _TEST_ABI_JSON: &str = r#"
-        {
-            "version": "eosio::abi/1.0",
-            "structs": [
-                {
-                    "name": "s1",
-                    "base": "",
-                    "fields": [
-                        {"name": "x1","types": "int8"}
-                    ]
-                },
-                {
-                    "name": "s2",
-                    "base": "",
-                    "fields": [
-                        {"name": "y1","type": "int8$"},
-                        {"name": "y2","type": "int8$"}
-                    ]
-                },
-                {
-                    "name": "s3",
-                    "base": "",
-                    "fields": [
-                        {"name": "z1","type": "int8$"},
-                        {"name": "z2","type": "v1$"},
-                        {"name": "z3","type": "s2$"}
-                    ]
-                },
-                {
-                    "name": "s4",
-                    "base": "",
-                    "fields": [
-                        {"name": "a1","type": "int8?$"},
-                        {"name": "b1","type": "int8[]$"}
-                    ]
-                }
-            ],
-            "variants": [
-                {
-                    "name": "v1",
-                    "types": ["int8","s1","s2"]
-                }
-            ]
-        }"#;
+    pub const ACTION_RESULT_ABI_JSON: &str = r#"{
+        "version": "eosio::abi/1.2",
+        "types": [],
+        "structs": [
+            {
+                "name": "getbalance",
+                "base": "",
+                "fields": [
+                    {"name": "owner", "type": "name"}
+                ]
+            }
+        ],
+        "actions": [
+            {"name": "getbalance", "type": "getbalance", "ricardian_contract": ""}
+        ],
+        "tables": [],
+        "ricardian_clauses": [],
+        "error_messages": [],
+        "abi_extensions": [],
+        "variants": [],
+        "action_results": [
+            {"name": "getbalance", "result_type": "asset"}
+        ]
+    }"#;
 }

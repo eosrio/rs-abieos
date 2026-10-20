@@ -2,10 +2,10 @@ use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
 use super::abi_def::{AbiDef, FieldDef, StructDef};
-use super::builtins::{read_builtin, write_builtin, BUILTINS};
-use super::fnv::{fnv_map_with_capacity, FnvMap};
+use super::builtins::{BUILTINS, read_builtin, write_builtin};
+use super::fnv::{FnvMap, fnv_map_with_capacity};
 use super::istr::IStr;
-use super::json::{parse_json, quote_json, Json};
+use super::json::{Json, parse_json, quote_json};
 use super::stream::{Reader, Writer};
 
 #[derive(Clone)]

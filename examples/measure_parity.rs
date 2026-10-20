@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 #[cfg(all(feature = "rust-backend", feature = "cpp-oracle"))]
 mod parity_measurer {
-    use rs_abieos::{cpp_oracle, Abieos};
+    use rs_abieos::{Abieos, cpp_oracle};
     use std::ffi::{CStr, CString};
 
     pub const TEST_ABI_CONTRACT: &str = "test.abi";
@@ -253,11 +253,7 @@ mod parity_measurer {
     }
 
     fn result_status<T, E>(result: &Result<T, E>) -> &'static str {
-        if result.is_ok() {
-            "ok"
-        } else {
-            "err"
-        }
+        if result.is_ok() { "ok" } else { "err" }
     }
 
     pub struct CategoryStats {

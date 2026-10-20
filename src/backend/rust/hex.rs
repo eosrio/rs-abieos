@@ -27,13 +27,13 @@ pub(crate) fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
         }
     }
     let bytes = s.as_bytes();
-    if bytes.len() % 2 != 0 {
+    if !bytes.len().is_multiple_of(2) {
         return Err("Expected string containing hex".into());
     }
     let mut out = Vec::with_capacity(bytes.len() / 2);
-    for pair in bytes.chunks_exact(2) {
-        let h = nibble(pair[0]).ok_or_else(|| "Expected string containing hex".to_string())?;
-        let l = nibble(pair[1]).ok_or_else(|| "Expected string containing hex".to_string())?;
+    for &[hi, lo] in bytes.as_chunks::<2>().0 {
+        let h = nibble(hi).ok_or_else(|| "Expected string containing hex".to_string())?;
+        let l = nibble(lo).ok_or_else(|| "Expected string containing hex".to_string())?;
         out.push((h << 4) | l);
     }
     Ok(out)

@@ -2,13 +2,14 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(clippy::missing_safety_doc)]
-#![allow(clippy::manual_is_multiple_of)]
-#![allow(clippy::manual_repeat_n)]
 #![allow(clippy::only_used_in_recursion)]
 
 //! # Rust Abieos
 //!
-//! Abieos is a Rust wrapper for the abieos C library
+//! `rs_abieos` provides Antelope/EOSIO ABI serialization, deserialization, and name conversion.
+//! By default (`rust-backend`), it uses a pure-Rust implementation with no C/C++ toolchain
+//! dependencies. An optional `cpp-backend` feature compiles and links the original C++ `abieos`
+//! library via FFI.
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -42,11 +43,12 @@ fn cstr_push(ptr: *const c_char, out: &mut String) -> Result<(), AbieosError> {
     Ok(())
 }
 
-/// Abieos is a Rust wrapper for the abieos C library.
+/// Abieos is a Rust wrapper for the abieos C ABI surface (backed by pure Rust by default,
+/// or the C++ library with `cpp-backend`).
 ///
 /// # Thread Safety
 ///
-/// `Abieos` implements `Send` but **not** `Sync`. The underlying C library stores
+/// `Abieos` implements `Send` but **not** `Sync`. The underlying context stores
 /// mutable state (result buffers, error strings) in the context struct, so concurrent
 /// access from multiple threads is **not safe**.
 ///
@@ -141,16 +143,37 @@ impl AbieosContract {
         }
     }
 
+    /// Get data type for an action result
+    pub fn get_type_for_action_result(&self, action_result: &str) -> Result<String, AbieosError> {
+        let ref_abieos = Abieos::from_context(self.context);
+        match ref_abieos.string_to_name(action_result) {
+            Ok(x) => ref_abieos.get_type_for_action_result_native(self.name, x),
+            Err(_) => Err(AbieosError::StringToName),
+        }
+    }
+
     /// Serialize JSON into binary (output as HEX)
     pub fn json_to_hex(&self, datatype: &str, json: &str) -> Result<String, AbieosError> {
         let ref_abieos = Abieos::from_context(self.context);
         ref_abieos.json_to_hex_native(self.name, datatype, json)
     }
 
+    /// Serialize JSON into binary (output as `Vec<u8>`)
+    pub fn json_to_bin(&self, datatype: &str, json: &str) -> Result<Vec<u8>, AbieosError> {
+        let ref_abieos = Abieos::from_context(self.context);
+        ref_abieos.json_to_bin_native(self.name, datatype, json)
+    }
+
     /// Deserialize HEX string into JSON
     pub fn hex_to_json(&self, datatype: &str, hex: &str) -> Result<String, AbieosError> {
         let ref_abieos = Abieos::from_context(self.context);
         ref_abieos.hex_to_json_native(self.name, datatype, hex)
+    }
+
+    /// Deserialize binary slice into JSON
+    pub fn bin_to_json(&self, datatype: &str, bin: &[u8]) -> Result<String, AbieosError> {
+        let ref_abieos = Abieos::from_context(self.context);
+        ref_abieos.bin_to_json_native(self.name, datatype, bin)
     }
 }
 
@@ -314,7 +337,7 @@ impl Abieos {
     /// [`delete_contract`](Self::delete_contract) first, then `set_abi`.
     ///
     /// For decoding historical data where the active ABI changes over time (per `setabi`),
-    /// prefer [`AbiHandle`](crate::AbiHandle) (rust-backend): parse each version once and keep
+    /// prefer `AbiHandle` (rust-backend): parse each version once and keep
     /// your own `(account, valid_from)` map — no per-version reload or `delete`/`set` churn.
     pub fn set_abi_json(&self, contract: &str, abi_json: &str) -> Result<bool, AbieosError> {
         match self.string_to_name(contract) {

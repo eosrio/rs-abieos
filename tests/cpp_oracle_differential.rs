@@ -1,5 +1,3 @@
-#![allow(clippy::manual_is_multiple_of)]
-
 #[cfg(all(feature = "rust-backend", feature = "cpp-oracle"))]
 #[path = "common/extension_nesting_fixtures.rs"]
 mod extension_nesting_fixtures;
@@ -7,7 +5,7 @@ mod extension_nesting_fixtures;
 #[cfg(all(feature = "rust-backend", feature = "cpp-oracle"))]
 mod cpp_oracle_differential {
     use super::extension_nesting_fixtures::{EXTENSION_NESTING_ABI, EXTENSION_NESTING_CASES};
-    use rs_abieos::{cpp_oracle, Abieos};
+    use rs_abieos::{Abieos, cpp_oracle};
     use std::ffi::{CStr, CString};
 
     const TEST_ABI_CONTRACT: &str = "test.abi";
@@ -338,11 +336,7 @@ mod cpp_oracle_differential {
     }
 
     fn result_status<T, E>(result: &Result<T, E>) -> &'static str {
-        if result.is_ok() {
-            "ok"
-        } else {
-            "err"
-        }
+        if result.is_ok() { "ok" } else { "err" }
     }
 
     fn compare_codec_rows(rust: &Abieos, oracle: &Oracle, rows: &[CodecRow]) {
@@ -436,12 +430,14 @@ mod cpp_oracle_differential {
     }
 
     fn hex_to_bytes(hex: &str) -> Result<Vec<u8>, String> {
-        if hex.len() % 2 != 0 {
+        if !hex.len().is_multiple_of(2) {
             return Err(format!("odd-length hex string: {hex}"));
         }
 
         hex.as_bytes()
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| {
                 let pair = std::str::from_utf8(pair).map_err(|e| e.to_string())?;
                 u8::from_str_radix(pair, 16).map_err(|e| e.to_string())

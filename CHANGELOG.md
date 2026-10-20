@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-20
+
+### Added
+- Expanded **`AbiHandle`** (`rust-backend`) into a complete standalone codec:
+  - `type_for_action_result(&self, action_result: u64) -> Option<&str>`
+  - `hex_to_json(&mut self, datatype: &str, hex: &str) -> Result<String, AbieosError>` and `hex_to_json_into(...)`
+  - `json_to_bin(&mut self, datatype: &str, json: &str) -> Result<Vec<u8>, AbieosError>`, `json_to_bin_into(...)`, and `json_to_hex(...)`
+  - `decode_action(&mut self, action: u64, bin: &[u8]) -> Result<String, AbieosError>` and `decode_action_into(...)`
+  - `decode_action_result(&mut self, action_result: u64, bin: &[u8]) -> Result<String, AbieosError>` and `decode_action_result_into(...)`
+- Expanded **`AbieosContract`** with missing convenience methods to match `Abieos`:
+  - `get_type_for_action_result(&self, action_result: &str) -> Result<String, AbieosError>`
+  - `json_to_bin(&self, datatype: &str, json: &str) -> Result<Vec<u8>, AbieosError>`
+  - `bin_to_json(&self, datatype: &str, bin: &[u8]) -> Result<String, AbieosError>`
+- Added integration test coverage for `action_results`, the new `AbieosContract` methods, and the full `AbiHandle` encode/decode surface.
+
+### Changed
+- **Default Backend Flip:** `rust-backend` is now the default Cargo feature (`default = ["rust-backend"]`). Default builds are 100% pure Rust, require no C++ compiler, `cmake`, `libclang`, or `bindgen`, and build natively on `x86_64-pc-windows-msvc` as well as Linux and macOS. The vendored C++ implementation remains available via `--no-default-features --features cpp-backend` (and `cpp-oracle` for differential testing).
+- Upgraded crate and fuzz harness to **Rust Edition 2024** (`edition = "2024"`).
+- Updated build and benchmark dependencies (`cc` `1.9.0`, `criterion` `0.8.2`, and `bindgen` configured for `RustEdition::Edition2024`).
+- Updated CI workflows so default jobs validate `rust-backend` and C++ backend jobs explicitly select `--no-default-features --features cpp-backend`.
+
+### Fixed
+- Fixed Rust 2024 `unsafe_op_in_unsafe_fn` compliance across `src/backend/rust/mod.rs`.
+- Resolved Rust 1.99 clippy lints (`chunks_exact_to_as_chunks`, `collapsible_if`, `manual_is_multiple_of`, `manual_repeat_n`) and `criterion::black_box` deprecation warnings.
+- Fixed `rustdoc` intra-doc link warning on `set_abi_json` when building docs under both `rust-backend` and `cpp-backend`.
+
 ## [0.6.0] - 2026-05-31
 
 ### Added
