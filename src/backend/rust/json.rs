@@ -481,6 +481,42 @@ pub(crate) fn parse_json(src: &str) -> Result<Json<'_>, String> {
     JsonParser::new(src).parse()
 }
 
+// The ABI codec intentionally accepts some legacy numeric spellings. Raw
+// metadata emission needs JSON's stricter grammar without changing that codec.
+pub(crate) fn is_json_object(src: &str) -> bool {
+    fn digits(s: &str) -> bool {
+        !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
+    }
+    fn number(s: &str) -> bool {
+        let s = s.strip_prefix('-').unwrap_or(s);
+        let (mantissa, exponent) = s
+            .split_once(['e', 'E'])
+            .map_or((s, None), |(m, e)| (m, Some(e)));
+        let (integer, fraction) = mantissa
+            .split_once('.')
+            .map_or((mantissa, None), |(i, f)| (i, Some(f)));
+        let valid_integer = integer == "0"
+            || (matches!(integer.as_bytes().first(), Some(b'1'..=b'9')) && digits(integer));
+        valid_integer
+            && fraction.is_none_or(digits)
+            && exponent.is_none_or(|e| digits(e.strip_prefix(['+', '-']).unwrap_or(e)))
+    }
+    fn valid_numbers(value: &Json<'_>) -> bool {
+        match value {
+            Json::Number(s) => number(s),
+            Json::Array(values) => values.iter().all(valid_numbers),
+            Json::Object(fields) => fields.iter().all(|(_, v)| valid_numbers(v)),
+            _ => true,
+        }
+    }
+    // The legacy whitespace scanner accepts all ASCII controls <= space.
+    // JSON only permits space, tab, CR and LF outside strings; string parsing
+    // already rejects every unescaped control within a string.
+    !src.bytes()
+        .any(|b| b < b' ' && !matches!(b, b'\t' | b'\r' | b'\n'))
+        && matches!(parse_json(src), Ok(value @ Json::Object(_)) if valid_numbers(&value))
+}
+
 pub(crate) fn quote_json(s: &str, out: &mut String) {
     out.push('"');
     for ch in s.chars() {

@@ -188,6 +188,10 @@ The existing numeric table APIs use legacy EOSIO names and only expose Wire
 tables whose names can be represented exactly in that format. Resolve an
 arbitrary Wire name with `type_for_table_name`, then pass its row type to
 `bin_to_json` when using a standalone handle.
+Enum decoding emits symbolic names for declared values. Unknown wide integer
+values normally use quoted decimal strings; if that string would match a
+symbolic member or an ambiguous suffix, decoding emits a numeric JSON token
+so re-encoding preserves the original value.
 
 The pure Rust backend implements the C++ `abieos` parsing and serialization rules, including:
 - Order-independent base struct resolution

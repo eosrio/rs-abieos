@@ -794,6 +794,10 @@ impl Abieos {
     }
 
     fn get_type_for_table_name(&self, contract: u64, table: &str) -> Result<String, AbieosError> {
+        // Retain the context API's C-string argument validation.
+        if table.as_bytes().contains(&0) {
+            return Err(AbieosError::StringToName);
+        }
         #[cfg(feature = "rust-backend")]
         {
             unsafe { backend::get_type_for_table_name(self.ctx(), contract, table) }

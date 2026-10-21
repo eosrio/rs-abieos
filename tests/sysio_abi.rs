@@ -62,6 +62,10 @@ fn sysio_table_names_do_not_alias_eosio_names() {
             "A"
         );
         assert!(abieos.get_type_for_table("test", "foo-bar").is_err());
+        assert!(matches!(
+            abieos.get_type_for_table("test", "foo\0bar"),
+            Err(rs_abieos::AbieosError::StringToName)
+        ));
     }
 }
 
@@ -94,6 +98,28 @@ fn sysio_enum_numbers_are_not_symbolic_names_or_suffixes() {
 }
 
 #[test]
+fn sysio_enum_numeric_fallbacks_roundtrip_without_symbolic_collisions() {
+    for underlying in [
+        "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64", "int128",
+        "uint128",
+    ] {
+        let abi = format!(
+            r#"{{"version":"sysio::abi/1.2","enums":[{{"name":"tier","type":"{underlying}","values":[{{"name":"TIER_0","value":1}},{{"name":"2","value":7}},{{"name":"TIER_3","value":10}},{{"name":"LEVEL_3","value":11}}]}}]}}"#
+        );
+        let mut handle = AbiHandle::from_json(&abi).unwrap();
+        for numeric in ["0", "2", "3"] {
+            let binary = handle.json_to_bin("tier", numeric).unwrap();
+            let json = handle.bin_to_json("tier", &binary).unwrap();
+            assert_eq!(
+                handle.json_to_bin("tier", &json).unwrap(),
+                binary,
+                "{underlying}: {numeric} -> {json}"
+            );
+        }
+    }
+}
+
+#[test]
 fn sysio_protobuf_descriptor_objects_and_strings_preserve_binary_payload() {
     let object_abi = r#"{"version":"sysio::abi/1.3","protobuf_types":{"file":[{"name":"test.proto","syntax":"proto3","messageType":[{"name":"M","field":[{"name":"value","number":1,"type":"TYPE_UINT32"}]}]}]}}"#;
     let string_abi = r#"{"version":"sysio::abi/1.3","protobuf_types":"{\"file\":[{\"name\":\"test.proto\",\"syntax\":\"proto3\",\"messageType\":[{\"name\":\"M\",\"field\":[{\"name\":\"value\",\"number\":1,\"type\":\"TYPE_UINT32\"}]}]}]}"}"#;
@@ -115,6 +141,15 @@ fn sysio_protobuf_descriptor_objects_and_strings_preserve_binary_payload() {
     let json = abieos.abi_bin_to_json(&bin).unwrap();
     assert!(
         json.contains(r#""protobuf_types":{ "file": [] }"#),
+        "{json}"
+    );
+    assert_eq!(abieos.abi_json_to_bin(&json).unwrap(), bin);
+
+    let numbers = r#"{"version":"sysio::abi/1.3","protobuf_types":{"numbers":[0,-0,12,-12,0.25,-1.5e+10,2E-2]}}"#;
+    let bin = abieos.abi_json_to_bin(numbers).unwrap();
+    let json = abieos.abi_bin_to_json(&bin).unwrap();
+    assert!(
+        json.contains(r#""protobuf_types":{"numbers":[0,-0,12,-12,0.25,-1.5e+10,2E-2]}"#),
         "{json}"
     );
     assert_eq!(abieos.abi_json_to_bin(&json).unwrap(), bin);
@@ -169,6 +204,25 @@ fn sysio_primary_and_secondary_table_ids_require_u16_values() {
             2,
             "{json}"
         );
+        assert_eq!(abieos.abi_json_to_bin(&json).unwrap(), bin);
+    }
+}
+
+#[test]
+fn sysio_protobuf_strings_with_invalid_json_remain_quoted() {
+    let abieos = Abieos::new();
+    for escaped in [
+        r#"{\"number\":01}"#,
+        r#"{\"number\":1e}"#,
+        r#"{\"number\":1.}"#,
+        r#"{\"number\":-.1}"#,
+        r#"{\"values\":[-]}"#,
+        r#"{\u000b\"file\":[]}"#,
+    ] {
+        let abi = format!(r#"{{"version":"sysio::abi/1.3","protobuf_types":"{escaped}"}}"#);
+        let bin = abieos.abi_json_to_bin(&abi).unwrap();
+        let json = abieos.abi_bin_to_json(&bin).unwrap();
+        assert!(json.contains(r#""protobuf_types":""#), "{json}");
         assert_eq!(abieos.abi_json_to_bin(&json).unwrap(), bin);
     }
 }

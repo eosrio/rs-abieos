@@ -731,7 +731,15 @@ impl Abi {
                     quote_json(&member.name, out);
                     return Ok(());
                 }
-                if quote_fallback {
+                // A quoted wide-integer fallback could be interpreted as a
+                // symbolic member (or ambiguous suffix) on re-encoding. Emit
+                // a numeric token in that case to preserve its integer value.
+                if quote_fallback
+                    && matches!(
+                        find_enum_member_by_name(&enum_def.values, &fallback_str),
+                        Ok(None)
+                    )
+                {
                     quote_json(&fallback_str, out);
                 } else {
                     out.push_str(&fallback_str);
