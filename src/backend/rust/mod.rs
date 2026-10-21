@@ -251,6 +251,31 @@ pub unsafe extern "C" fn abieos_get_type_for_action(
     }
 }
 
+pub(crate) unsafe fn get_type_for_table_name(
+    context: *mut abieos_context,
+    contract: u64,
+    table: &str,
+) -> Option<String> {
+    unsafe {
+        with_ctx(context, None, |ctx| {
+            let abi = ctx.contracts.get(&contract).ok_or_else(|| {
+                format!(
+                    "contract \"{}\" is not loaded",
+                    name_to_string_value(contract)
+                )
+            })?;
+            let ty = abi.type_for_table_name(table).ok_or_else(|| {
+                format!(
+                    "contract \"{}\" does not have table \"{}\"",
+                    name_to_string_value(contract),
+                    table
+                )
+            })?;
+            Ok(Some(ty.to_owned()))
+        })
+    }
+}
+
 pub unsafe extern "C" fn abieos_get_type_for_table(
     context: *mut abieos_context,
     contract: u64,

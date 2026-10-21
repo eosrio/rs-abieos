@@ -1,6 +1,6 @@
 use super::istr::IStr;
-use super::json::quote_json;
-use super::name::name_to_string_value;
+use super::json::{is_json_object, quote_json};
+use super::name::{name_to_string_value, string_to_name_value};
 use super::stream::{Reader, Writer};
 
 #[derive(Default, Clone)]
@@ -26,12 +26,21 @@ pub(crate) struct ActionDef {
     pub(crate) ricardian_contract: IStr,
 }
 #[derive(Default, Clone)]
+pub(crate) struct IndexDef {
+    pub(crate) name: IStr,
+    pub(crate) key_type: IStr,
+    pub(crate) table_id: u16,
+}
+#[derive(Default, Clone)]
 pub(crate) struct TableDef {
     pub(crate) name: u64,
+    pub(crate) name_str: IStr,
     pub(crate) index_type: IStr,
     pub(crate) key_names: std::sync::Arc<[IStr]>,
     pub(crate) key_types: std::sync::Arc<[IStr]>,
     pub(crate) type_name: IStr,
+    pub(crate) table_id: u16,
+    pub(crate) secondary_indexes: std::sync::Arc<[IndexDef]>,
 }
 #[derive(Default, Clone)]
 pub(crate) struct ClausePair {
@@ -54,6 +63,17 @@ pub(crate) struct ActionResultDef {
     pub(crate) result_type: IStr,
 }
 #[derive(Default, Clone)]
+pub(crate) struct EnumValueDef {
+    pub(crate) name: IStr,
+    pub(crate) value: i64,
+}
+#[derive(Default, Clone)]
+pub(crate) struct EnumDef {
+    pub(crate) name: IStr,
+    pub(crate) type_name: IStr,
+    pub(crate) values: std::sync::Arc<[EnumValueDef]>,
+}
+#[derive(Default, Clone)]
 pub(crate) struct AbiDef {
     pub(crate) version: IStr,
     pub(crate) types: Vec<TypeDef>,
@@ -65,6 +85,8 @@ pub(crate) struct AbiDef {
     pub(crate) abi_extensions: Vec<(u16, Vec<u8>)>,
     pub(crate) variants: Vec<VariantDef>,
     pub(crate) action_results: Vec<ActionResultDef>,
+    pub(crate) enums: Vec<EnumDef>,
+    pub(crate) protobuf_types: IStr,
 }
 
 impl AbiDef {
@@ -72,8 +94,15 @@ impl AbiDef {
         super::abi_json::parse_abi_def(json)
     }
 
+    pub(crate) fn is_sysio(&self) -> bool {
+        self.version.starts_with("sysio::abi/")
+    }
+
     pub(crate) fn check_version(&self) -> Result<(), String> {
-        if self.version.starts_with("eosio::abi/1.") || self.version.starts_with("eosio::abi/2.") {
+        if self.version.starts_with("eosio::abi/1.")
+            || self.version.starts_with("eosio::abi/2.")
+            || self.version.starts_with("sysio::abi/1.")
+        {
             Ok(())
         } else {
             Err("unsupported abi version".into())
@@ -81,6 +110,7 @@ impl AbiDef {
     }
 
     fn write_bin(&self, w: &mut Writer) {
+        let is_sysio = self.is_sysio();
         w.string(&self.version);
         w.varuint32(self.types.len() as u32);
         for t in &self.types {
@@ -105,11 +135,28 @@ impl AbiDef {
         }
         w.varuint32(self.tables.len() as u32);
         for t in &self.tables {
-            w.u64(t.name);
+            if is_sysio {
+                if !t.name_str.is_empty() {
+                    w.string(&t.name_str);
+                } else {
+                    w.string(&name_to_string_value(t.name));
+                }
+            } else {
+                w.u64(t.name);
+            }
             w.string(&t.index_type);
             write_string_arc_vec(w, &t.key_names);
             write_string_arc_vec(w, &t.key_types);
             w.string(&t.type_name);
+            if is_sysio {
+                w.u16(t.table_id);
+                w.varuint32(t.secondary_indexes.len() as u32);
+                for idx in t.secondary_indexes.iter() {
+                    w.string(&idx.name);
+                    w.string(&idx.key_type);
+                    w.u16(idx.table_id);
+                }
+            }
         }
         w.varuint32(self.ricardian_clauses.len() as u32);
         for c in &self.ricardian_clauses {
@@ -136,6 +183,19 @@ impl AbiDef {
             w.u64(r.name);
             w.string(&r.result_type);
         }
+        if is_sysio || !self.enums.is_empty() || !self.protobuf_types.is_empty() {
+            w.varuint32(self.enums.len() as u32);
+            for e in &self.enums {
+                w.string(&e.name);
+                w.string(&e.type_name);
+                w.varuint32(e.values.len() as u32);
+                for v in e.values.iter() {
+                    w.string(&v.name);
+                    w.i64(v.value);
+                }
+            }
+            w.string(&self.protobuf_types);
+        }
     }
 
     /// Serialize into a caller-owned buffer, reusing its capacity. Repeated
@@ -151,6 +211,7 @@ impl AbiDef {
             version: r.istr()?,
             ..Default::default()
         };
+        let is_sysio = def.is_sysio();
         def.types = read_vec(r, |r| {
             Ok(TypeDef {
                 new_type_name: r.istr()?,
@@ -177,15 +238,48 @@ impl AbiDef {
                 ricardian_contract: r.istr()?,
             })
         })?;
-        def.tables = read_vec(r, |r| {
-            Ok(TableDef {
-                name: r.u64()?,
-                index_type: r.istr()?,
-                key_names: read_string_arc_vec(r)?,
-                key_types: read_string_arc_vec(r)?,
-                type_name: r.istr()?,
-            })
-        })?;
+        if is_sysio {
+            def.tables = read_vec(r, |r| {
+                let name_str = r.istr()?;
+                let name = string_to_name_value(&name_str);
+                let index_type = r.istr()?;
+                let key_names = read_string_arc_vec(r)?;
+                let key_types = read_string_arc_vec(r)?;
+                let type_name = r.istr()?;
+                let table_id = r.u16()?;
+                let secondary_indexes = read_vec(r, |r| {
+                    Ok(IndexDef {
+                        name: r.istr()?,
+                        key_type: r.istr()?,
+                        table_id: r.u16()?,
+                    })
+                })?
+                .into();
+                Ok(TableDef {
+                    name,
+                    name_str,
+                    index_type,
+                    key_names,
+                    key_types,
+                    type_name,
+                    table_id,
+                    secondary_indexes,
+                })
+            })?;
+        } else {
+            def.tables = read_vec(r, |r| {
+                Ok(TableDef {
+                    name: r.u64()?,
+                    name_str: IStr::default(),
+                    index_type: r.istr()?,
+                    key_names: read_string_arc_vec(r)?,
+                    key_types: read_string_arc_vec(r)?,
+                    type_name: r.istr()?,
+                    table_id: 0,
+                    secondary_indexes: Vec::new().into(),
+                })
+            })?;
+        }
         def.ricardian_clauses = read_vec(r, |r| {
             Ok(ClausePair {
                 id: r.istr()?,
@@ -215,10 +309,29 @@ impl AbiDef {
                 })
             })?;
         }
+        if r.remaining() > 0 {
+            def.enums = read_vec(r, |r| {
+                Ok(EnumDef {
+                    name: r.istr()?,
+                    type_name: r.istr()?,
+                    values: read_vec(r, |r| {
+                        Ok(EnumValueDef {
+                            name: r.istr()?,
+                            value: r.i64()?,
+                        })
+                    })?
+                    .into(),
+                })
+            })?;
+        }
+        if r.remaining() > 0 {
+            def.protobuf_types = r.istr()?;
+        }
         Ok(def)
     }
 
     pub(crate) fn to_json_string(&self) -> String {
+        let is_sysio = self.is_sysio();
         let mut out = String::new();
         out.push('{');
         json_kv(
@@ -304,7 +417,13 @@ impl AbiDef {
                     json_kv(
                         out,
                         "name",
-                        |out| quote_json(&name_to_string_value(t.name), out),
+                        |out| {
+                            if !t.name_str.is_empty() {
+                                quote_json(&t.name_str, out);
+                            } else {
+                                quote_json(&name_to_string_value(t.name), out);
+                            }
+                        },
                         false,
                     );
                     json_kv(
@@ -326,6 +445,38 @@ impl AbiDef {
                         true,
                     );
                     json_kv(out, "type", |out| quote_json(&t.type_name, out), true);
+                    if is_sysio || t.table_id != 0 || !t.secondary_indexes.is_empty() {
+                        json_kv(
+                            out,
+                            "table_id",
+                            |out| out.push_str(&t.table_id.to_string()),
+                            true,
+                        );
+                        json_kv(
+                            out,
+                            "secondary_indexes",
+                            |out| {
+                                json_array(out, t.secondary_indexes.iter(), |out, idx| {
+                                    out.push('{');
+                                    json_kv(out, "name", |out| quote_json(&idx.name, out), false);
+                                    json_kv(
+                                        out,
+                                        "key_type",
+                                        |out| quote_json(&idx.key_type, out),
+                                        true,
+                                    );
+                                    json_kv(
+                                        out,
+                                        "table_id",
+                                        |out| out.push_str(&idx.table_id.to_string()),
+                                        true,
+                                    );
+                                    out.push('}');
+                                })
+                            },
+                            true,
+                        );
+                    }
                     out.push('}');
                 })
             },
@@ -403,6 +554,58 @@ impl AbiDef {
             },
             true,
         );
+        if is_sysio || !self.enums.is_empty() {
+            json_kv(
+                &mut out,
+                "enums",
+                |out| {
+                    json_array(out, self.enums.iter(), |out, e| {
+                        out.push('{');
+                        json_kv(out, "name", |out| quote_json(&e.name, out), false);
+                        json_kv(out, "type", |out| quote_json(&e.type_name, out), true);
+                        json_kv(
+                            out,
+                            "values",
+                            |out| {
+                                json_array(out, e.values.iter(), |out, v| {
+                                    out.push('{');
+                                    json_kv(out, "name", |out| quote_json(&v.name, out), false);
+                                    json_kv(
+                                        out,
+                                        "value",
+                                        |out| out.push_str(&v.value.to_string()),
+                                        true,
+                                    );
+                                    out.push('}');
+                                })
+                            },
+                            true,
+                        );
+                        out.push('}');
+                    })
+                },
+                true,
+            );
+        }
+        if !self.protobuf_types.is_empty() {
+            json_kv(
+                &mut out,
+                "protobuf_types",
+                |out| {
+                    // Retain the string form if outer whitespace would be lost
+                    // when an object is read back into the binary string field.
+                    if self.protobuf_types.starts_with('{')
+                        && self.protobuf_types.ends_with('}')
+                        && is_json_object(&self.protobuf_types)
+                    {
+                        out.push_str(&self.protobuf_types);
+                    } else {
+                        quote_json(&self.protobuf_types, out);
+                    }
+                },
+                true,
+            );
+        }
         out.push('}');
         out
     }

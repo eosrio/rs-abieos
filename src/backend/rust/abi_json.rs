@@ -26,8 +26,8 @@ use std::sync::Arc;
 
 use super::abi_def::AbiDef;
 use super::abi_def::{
-    ActionDef, ActionResultDef, ClausePair, ErrorMessage, FieldDef, StructDef, TableDef, TypeDef,
-    VariantDef,
+    ActionDef, ActionResultDef, ClausePair, EnumDef, EnumValueDef, ErrorMessage, FieldDef,
+    IndexDef, StructDef, TableDef, TypeDef, VariantDef,
 };
 use super::hex::hex_decode;
 use super::istr::IStr;
@@ -43,6 +43,12 @@ fn scalar<'a>(p: &mut JsonParser<'a>) -> Result<Cow<'a, str>, String> {
         Some(b'-' | b'0'..=b'9') => p.parse_number(),
         _ => Err("expected string".into()),
     }
+}
+
+fn parse_table_id(p: &mut JsonParser<'_>) -> Result<u16, String> {
+    scalar(p)?
+        .parse()
+        .map_err(|_| "Invalid table_id: expected integer in range 0..65535".into())
 }
 
 /// Collect a JSON array of strings into `scratch` (reused across calls) and
@@ -99,7 +105,7 @@ pub(crate) fn parse_abi_def(json: &str) -> Result<AbiDef, String> {
 
     // First-occurrence-wins tracking for the top-level keys we consume.
     let mut seen_version = false;
-    let mut seen: [bool; 9] = [false; 9];
+    let mut seen: [bool; 11] = [false; 11];
     const K_TYPES: usize = 0;
     const K_STRUCTS: usize = 1;
     const K_ACTIONS: usize = 2;
@@ -109,6 +115,8 @@ pub(crate) fn parse_abi_def(json: &str) -> Result<AbiDef, String> {
     const K_EXT: usize = 6;
     const K_VARIANTS: usize = 7;
     const K_ARESULTS: usize = 8;
+    const K_ENUMS: usize = 9;
+    const K_PROTOBUF: usize = 10;
 
     // Reused across all structs / string-lists: one allocation per frozen
     // `Arc<[..]>` instead of a temporary `Vec` plus its `Arc`.
@@ -245,7 +253,9 @@ pub(crate) fn parse_abi_def(json: &str) -> Result<AbiDef, String> {
                                 let k = p.member_key()?;
                                 match k.as_ref() {
                                     "name" => {
-                                        t.name = string_to_name_value(scalar(&mut p)?.as_ref())
+                                        let s = scalar(&mut p)?;
+                                        t.name = string_to_name_value(s.as_ref());
+                                        t.name_str = IStr::from(s.as_ref());
                                     }
                                     "index_type" => {
                                         t.index_type = IStr::from(scalar(&mut p)?.as_ref())
@@ -257,6 +267,38 @@ pub(crate) fn parse_abi_def(json: &str) -> Result<AbiDef, String> {
                                         t.key_types = istr_arc_vec(&mut p, &mut sscratch)?
                                     }
                                     "type" => t.type_name = IStr::from(scalar(&mut p)?.as_ref()),
+                                    "table_id" => t.table_id = parse_table_id(&mut p)?,
+                                    "secondary_indexes" => {
+                                        let mut idx_vec = Vec::new();
+                                        let mut idx_it = ArrayIter::new();
+                                        while idx_it.next(&mut p)? {
+                                            let mut idx = IndexDef::default();
+                                            if !p.object_open()? {
+                                                loop {
+                                                    let ik = p.member_key()?;
+                                                    match ik.as_ref() {
+                                                        "name" => {
+                                                            idx.name =
+                                                                IStr::from(scalar(&mut p)?.as_ref())
+                                                        }
+                                                        "key_type" => {
+                                                            idx.key_type =
+                                                                IStr::from(scalar(&mut p)?.as_ref())
+                                                        }
+                                                        "table_id" => {
+                                                            idx.table_id = parse_table_id(&mut p)?
+                                                        }
+                                                        _ => p.skip_value()?,
+                                                    }
+                                                    if p.object_step()? {
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            idx_vec.push(idx);
+                                        }
+                                        t.secondary_indexes = idx_vec.into();
+                                    }
                                     _ => p.skip_value()?,
                                 }
                                 if p.object_step()? {
@@ -382,6 +424,87 @@ pub(crate) fn parse_abi_def(json: &str) -> Result<AbiDef, String> {
                             }
                         }
                         def.action_results.push(r);
+                    }
+                }
+                "enums" if !seen[K_ENUMS] => {
+                    seen[K_ENUMS] = true;
+                    let mut it = ArrayIter::new();
+                    while it.next(&mut p)? {
+                        let mut name = IStr::default();
+                        let mut type_name = IStr::default();
+                        let mut values: Arc<[EnumValueDef]> = Vec::new().into();
+                        let mut got_name = false;
+                        let mut got_type = false;
+                        let mut got_values = false;
+                        if !p.object_open()? {
+                            loop {
+                                let k = p.member_key()?;
+                                match k.as_ref() {
+                                    "name" if !got_name => {
+                                        got_name = true;
+                                        name = IStr::from(scalar(&mut p)?.as_ref());
+                                    }
+                                    "type" if !got_type => {
+                                        got_type = true;
+                                        type_name = IStr::from(scalar(&mut p)?.as_ref());
+                                    }
+                                    "values" if !got_values => {
+                                        got_values = true;
+                                        let mut v_vec = Vec::new();
+                                        let mut vit = ArrayIter::new();
+                                        while vit.next(&mut p)? {
+                                            let mut ev = EnumValueDef::default();
+                                            if !p.object_open()? {
+                                                loop {
+                                                    let vk = p.member_key()?;
+                                                    match vk.as_ref() {
+                                                        "name" => {
+                                                            ev.name =
+                                                                IStr::from(scalar(&mut p)?.as_ref())
+                                                        }
+                                                        "value" => {
+                                                            ev.value = scalar(&mut p)?
+                                                                .parse::<i64>()
+                                                                .map_err(|_| {
+                                                                    "Expected integer".to_string()
+                                                                })?;
+                                                        }
+                                                        _ => p.skip_value()?,
+                                                    }
+                                                    if p.object_step()? {
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            v_vec.push(ev);
+                                        }
+                                        values = v_vec.into();
+                                    }
+                                    _ => p.skip_value()?,
+                                }
+                                if p.object_step()? {
+                                    break;
+                                }
+                            }
+                        }
+                        def.enums.push(EnumDef {
+                            name,
+                            type_name,
+                            values,
+                        });
+                    }
+                }
+                "protobuf_types" if !seen[K_PROTOBUF] => {
+                    seen[K_PROTOBUF] = true;
+                    p.skip_ws();
+                    if p.peek() == Some(b'"') {
+                        def.protobuf_types = IStr::from(p.parse_string()?.as_ref());
+                    } else if p.peek() == Some(b'{') {
+                        // Wire's native ABI JSON uses a descriptor object; the
+                        // binary ABI stores its JSON text in a string field.
+                        def.protobuf_types = IStr::from(p.raw_value()?);
+                    } else {
+                        p.skip_value()?;
                     }
                 }
                 // Unknown top-level key, or a duplicate of one already taken:

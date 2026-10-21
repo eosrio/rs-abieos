@@ -180,6 +180,19 @@ The `cpp-oracle` feature exposes the original C++ backend side-by-side with the 
 To eliminate the UB risk of use-after-overwrite (where successive calls to FFI functions overwrite the same context result buffer), the safe Rust wrapper copies results into owned Rust types (`String`, `Vec<u8>`) or caller-supplied buffers (`*_into` methods). Both `Abieos` and `AbiHandle` implement `Send` (move between threads freely) and use one instance per worker thread for lock-free parallel decoding.
 
 ### Parity Scope
+The Rust backend also reads Wire Network `sysio::abi/1.*` ABIs, including
+table IDs, secondary indexes, enums, and protobuf descriptor metadata. Wire
+table names are matched exactly by `Abieos::get_type_for_table`,
+`AbieosContract::get_type_for_table`, and `AbiHandle::type_for_table_name`.
+The existing numeric table APIs use legacy EOSIO names and only expose Wire
+tables whose names can be represented exactly in that format. Resolve an
+arbitrary Wire name with `type_for_table_name`, then pass its row type to
+`bin_to_json` when using a standalone handle.
+Enum decoding emits symbolic names for declared values. Unknown wide integer
+values normally use quoted decimal strings; if that string would match a
+symbolic member or an ambiguous suffix, decoding emits a numeric JSON token
+so re-encoding preserves the original value.
+
 The pure Rust backend implements the C++ `abieos` parsing and serialization rules, including:
 - Order-independent base struct resolution
 - Pseudo-types (`optional` `?`, `array` `[]`, fixed-size arrays `[N]`, `binary_extension` `$`)
