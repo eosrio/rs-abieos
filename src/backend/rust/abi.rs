@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
-use super::abi_def::{AbiDef, FieldDef, StructDef};
+use super::abi_def::{AbiDef, EnumDef, EnumValueDef, FieldDef, StructDef};
 use super::builtins::{BUILTINS, read_builtin, write_builtin};
 use super::fnv::{FnvMap, fnv_map_with_capacity};
 use super::istr::IStr;
@@ -18,6 +18,45 @@ pub(crate) enum TypeKind {
     FixedArray(IStr, usize),
     Struct(std::sync::Arc<[FieldDef]>),
     Variant(std::sync::Arc<[IStr]>),
+    Enum(std::sync::Arc<EnumDef>),
+}
+
+fn enum_underlying_bounds(type_name: &str) -> Option<(i64, i64)> {
+    match type_name {
+        "int8" => Some((i8::MIN as i64, i8::MAX as i64)),
+        "int16" => Some((i16::MIN as i64, i16::MAX as i64)),
+        "int32" => Some((i32::MIN as i64, i32::MAX as i64)),
+        "int64" | "int128" => Some((i64::MIN, i64::MAX)),
+        "uint8" => Some((0, u8::MAX as i64)),
+        "uint16" => Some((0, u16::MAX as i64)),
+        "uint32" => Some((0, u32::MAX as i64)),
+        "uint64" | "uint128" => Some((0, i64::MAX)),
+        _ => None,
+    }
+}
+
+/// Match `wire-sysio` `find_enum_member_by_name`:
+/// 1. Exact match on `member.name == name_str`
+/// 2. Unique suffix match after the last `'_'` (`member.name.rfind('_')`)
+///    - If 2+ members match the suffix, returns `Err(())` (ambiguous).
+fn find_enum_member_by_name(values: &[EnumValueDef], name_str: &str) -> Result<Option<i64>, ()> {
+    for member in values {
+        if member.name.as_str() == name_str {
+            return Ok(Some(member.value));
+        }
+    }
+    let mut found: Option<i64> = None;
+    for member in values {
+        if let Some(pos) = member.name.rfind('_')
+            && &member.name[pos + 1..] == name_str
+        {
+            if found.is_some() {
+                return Err(());
+            }
+            found = Some(member.value);
+        }
+    }
+    Ok(found)
 }
 
 #[derive(Clone)]
@@ -99,7 +138,9 @@ impl Abi {
                 .collect(),
             // Only ABI-defined and compound types; builtins resolve via the
             // shared static (see `known`). Pre-sized to avoid rehashing.
-            types: fnv_map_with_capacity(def.types.len() + def.structs.len() + def.variants.len()),
+            types: fnv_map_with_capacity(
+                def.types.len() + def.structs.len() + def.variants.len() + def.enums.len(),
+            ),
         };
         for t in &def.types {
             if t.new_type_name.is_empty() {
@@ -138,6 +179,46 @@ impl Abi {
                 || abi
                     .types
                     .insert(v.name.clone(), TypeKind::Variant(v.types.clone()))
+                    .is_some()
+            {
+                return Err("Redefined type".into());
+            }
+        }
+        for e in &def.enums {
+            if e.name.is_empty() {
+                return Err("Missing name".into());
+            }
+            let (min_val, max_val) = enum_underlying_bounds(&e.type_name)
+                .ok_or_else(|| format!("Invalid enum underlying type: {}", e.type_name))?;
+            let mut seen_names = BTreeSet::new();
+            let mut seen_values = BTreeSet::new();
+            for v in e.values.iter() {
+                if !seen_names.insert(v.name.as_str()) {
+                    return Err(format!(
+                        "Duplicate enum value name '{}' in enum '{}'",
+                        v.name, e.name
+                    ));
+                }
+                if !seen_values.insert(v.value) {
+                    return Err(format!(
+                        "Duplicate enum value {} in enum '{}'",
+                        v.value, e.name
+                    ));
+                }
+                if v.value < min_val || v.value > max_val {
+                    return Err(format!(
+                        "Enum value {} out of range for underlying type '{}' in enum '{}'",
+                        v.value, e.type_name, e.name
+                    ));
+                }
+            }
+            if builtin_types().contains_key(&*e.name)
+                || abi
+                    .types
+                    .insert(
+                        e.name.clone(),
+                        TypeKind::Enum(std::sync::Arc::new(e.clone())),
+                    )
                     .is_some()
             {
                 return Err("Redefined type".into());
@@ -384,6 +465,30 @@ impl Abi {
                     skipped_extension,
                 )
             }
+            TypeKind::Enum(enum_def) => {
+                let s = value.as_str_like()?;
+                match find_enum_member_by_name(&enum_def.values, s) {
+                    Ok(Some(member_val)) => {
+                        let num_json =
+                            Json::String(std::borrow::Cow::Owned(member_val.to_string()));
+                        write_builtin(&enum_def.type_name, &num_json, w)
+                    }
+                    Err(()) => Err(format!(
+                        "Unknown or ambiguous enum value '{}' for enum '{}'",
+                        s, enum_def.name
+                    )),
+                    Ok(None) => write_builtin(&enum_def.type_name, value, w).map_err(|e| {
+                        if e == "Expected integer" {
+                            format!(
+                                "Unknown or ambiguous enum value '{}' for enum '{}'",
+                                s, enum_def.name
+                            )
+                        } else {
+                            e
+                        }
+                    }),
+                }
+            }
             TypeKind::Builtin => write_builtin(type_name, value, w),
         }
     }
@@ -545,6 +650,65 @@ impl Abi {
                 out.push(',');
                 self.read_json_value(&ty, r, out, allow_extensions)?;
                 out.push(']');
+                Ok(())
+            }
+            TypeKind::Enum(enum_def) => {
+                let (val_opt, fallback_str, quote_fallback) = match enum_def.type_name.as_str() {
+                    "int8" => {
+                        let v = r.byte()? as i8 as i64;
+                        (Some(v), v.to_string(), false)
+                    }
+                    "uint8" => {
+                        let v = r.byte()? as i64;
+                        (Some(v), v.to_string(), false)
+                    }
+                    "int16" => {
+                        let v = r.i16()? as i64;
+                        (Some(v), v.to_string(), false)
+                    }
+                    "uint16" => {
+                        let v = r.u16()? as i64;
+                        (Some(v), v.to_string(), false)
+                    }
+                    "int32" => {
+                        let v = r.i32()? as i64;
+                        (Some(v), v.to_string(), false)
+                    }
+                    "uint32" => {
+                        let v = r.u32()? as i64;
+                        (Some(v), v.to_string(), false)
+                    }
+                    "int64" => {
+                        let v = r.i64()?;
+                        (Some(v), v.to_string(), true)
+                    }
+                    "uint64" => {
+                        let u = r.u64()?;
+                        (i64::try_from(u).ok(), u.to_string(), true)
+                    }
+                    "int128" => {
+                        let v = r.i128()?;
+                        (i64::try_from(v).ok(), v.to_string(), true)
+                    }
+                    "uint128" => {
+                        let u = r.u128()?;
+                        (i64::try_from(u).ok(), u.to_string(), true)
+                    }
+                    other => {
+                        return Err(format!("Invalid enum underlying type: {}", other));
+                    }
+                };
+                if let Some(val) = val_opt
+                    && let Some(member) = enum_def.values.iter().find(|m| m.value == val)
+                {
+                    quote_json(&member.name, out);
+                    return Ok(());
+                }
+                if quote_fallback {
+                    quote_json(&fallback_str, out);
+                } else {
+                    out.push_str(&fallback_str);
+                }
                 Ok(())
             }
             TypeKind::Builtin => read_builtin(type_name, r, out),
