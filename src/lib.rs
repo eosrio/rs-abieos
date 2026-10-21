@@ -137,10 +137,7 @@ impl AbieosContract {
     /// Get data type for a table
     pub fn get_type_for_table(&self, table: &str) -> Result<String, AbieosError> {
         let ref_abieos = Abieos::from_context(self.context);
-        match ref_abieos.string_to_name(table) {
-            Ok(x) => ref_abieos.get_type_for_table_native(self.name, x),
-            Err(_) => Err(AbieosError::StringToName),
-        }
+        ref_abieos.get_type_for_table_name(self.name, table)
     }
 
     /// Get data type for an action result
@@ -790,22 +787,28 @@ impl Abieos {
         }
     }
 
-    /// Get the type for a table
+    /// Get the type for a table. Wire (`sysio`) table names are matched exactly.
     pub fn get_type_for_table(&self, contract: &str, table: &str) -> Result<String, AbieosError> {
-        let ctx = self.ctx();
         let contract = self.string_to_name(contract)?;
-        let table = self.string_to_name(table)?;
-        unsafe {
-            let p = abieos_get_type_for_table(ctx, contract, table);
-            if p.is_null() {
-                Err(AbieosError::GetTypeForTable(self.get_error()))
-            } else {
-                Ok(string_from_ptr(p))
-            }
+        self.get_type_for_table_name(contract, table)
+    }
+
+    fn get_type_for_table_name(&self, contract: u64, table: &str) -> Result<String, AbieosError> {
+        #[cfg(feature = "rust-backend")]
+        {
+            unsafe { backend::get_type_for_table_name(self.ctx(), contract, table) }
+                .ok_or_else(|| AbieosError::GetTypeForTable(self.get_error()))
+        }
+        #[cfg(not(feature = "rust-backend"))]
+        {
+            let table = self.string_to_name(table)?;
+            self.get_type_for_table_native(contract, table)
         }
     }
 
-    /// Get the type for a table (u64 names as input)
+    /// Get the type for a table (legacy EOSIO u64 names as input).
+    /// Wire tables whose names cannot be represented exactly are only available
+    /// through [`get_type_for_table`](Self::get_type_for_table).
     pub fn get_type_for_table_native(
         &self,
         contract: u64,

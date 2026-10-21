@@ -6,6 +6,7 @@ use super::builtins::{BUILTINS, read_builtin, write_builtin};
 use super::fnv::{FnvMap, fnv_map_with_capacity};
 use super::istr::IStr;
 use super::json::{Json, parse_json, quote_json};
+use super::name::{name_to_string_value, string_to_name_value};
 use super::stream::{Reader, Writer};
 
 #[derive(Clone)]
@@ -63,6 +64,9 @@ fn find_enum_member_by_name(values: &[EnumValueDef], name_str: &str) -> Result<O
 pub(crate) struct Abi {
     pub(crate) action_types: FnvMap<u64, IStr>,
     pub(crate) table_types: FnvMap<u64, IStr>,
+    // Wire table names are free-form strings. Some cannot be represented by
+    // legacy EOSIO names, so keep their identity separate from the numeric API.
+    table_names: Option<FnvMap<IStr, IStr>>,
     pub(crate) action_result_types: FnvMap<u64, IStr>,
     types: FnvMap<IStr, TypeKind>,
 }
@@ -104,6 +108,7 @@ impl Abi {
         Abi {
             action_types: FnvMap::default(),
             table_types: FnvMap::default(),
+            table_names: None,
             action_result_types: FnvMap::default(),
             types: FnvMap::default(),
         }
@@ -120,6 +125,7 @@ impl Abi {
 
     pub(crate) fn from_def(def: &AbiDef) -> Result<Self, String> {
         def.check_version()?;
+        let is_sysio = def.is_sysio();
         let mut abi = Abi {
             action_types: def
                 .actions
@@ -129,8 +135,15 @@ impl Abi {
             table_types: def
                 .tables
                 .iter()
+                .filter(|t| !is_sysio || name_to_string_value(t.name) == t.name_str.as_str())
                 .map(|t| (t.name, t.type_name.clone()))
                 .collect(),
+            table_names: is_sysio.then(|| {
+                def.tables
+                    .iter()
+                    .map(|t| (t.name_str.clone(), t.type_name.clone()))
+                    .collect()
+            }),
             action_result_types: def
                 .action_results
                 .iter()
@@ -253,6 +266,14 @@ impl Abi {
             abi.ensure_type(&name, 0)?;
         }
         Ok(abi)
+    }
+
+    pub(crate) fn type_for_table_name(&self, table: &str) -> Option<&str> {
+        match &self.table_names {
+            Some(names) => names.get(table),
+            None => self.table_types.get(&string_to_name_value(table)),
+        }
+        .map(|ty| ty.as_str())
     }
 
     fn resolve_struct_fields(
@@ -466,6 +487,12 @@ impl Abi {
                 )
             }
             TypeKind::Enum(enum_def) => {
+                // Only JSON strings participate in member-name resolution.
+                // Numeric tokens must retain their underlying integer value,
+                // even if a member has the same spelling or numeric suffix.
+                if matches!(value, Json::Number(_)) {
+                    return write_builtin(&enum_def.type_name, value, w);
+                }
                 let s = value.as_str_like()?;
                 match find_enum_member_by_name(&enum_def.values, s) {
                     Ok(Some(member_val)) => {

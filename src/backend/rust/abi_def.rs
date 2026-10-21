@@ -1,5 +1,5 @@
 use super::istr::IStr;
-use super::json::quote_json;
+use super::json::{Json, parse_json, quote_json};
 use super::name::{name_to_string_value, string_to_name_value};
 use super::stream::{Reader, Writer};
 
@@ -591,7 +591,18 @@ impl AbiDef {
             json_kv(
                 &mut out,
                 "protobuf_types",
-                |out| quote_json(&self.protobuf_types, out),
+                |out| {
+                    // Retain the string form if outer whitespace would be lost
+                    // when an object is read back into the binary string field.
+                    if self.protobuf_types.starts_with('{')
+                        && self.protobuf_types.ends_with('}')
+                        && matches!(parse_json(&self.protobuf_types), Ok(Json::Object(_)))
+                    {
+                        out.push_str(&self.protobuf_types);
+                    } else {
+                        quote_json(&self.protobuf_types, out);
+                    }
+                },
                 true,
             );
         }

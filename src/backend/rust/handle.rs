@@ -43,9 +43,16 @@ impl AbiHandle {
         Self::from_bin(&bin)
     }
 
-    /// The struct type that decodes rows of `table` (u64 name), if the ABI declares it.
+    /// The struct type that decodes rows of `table` (legacy EOSIO u64 name).
+    /// Use [`type_for_table_name`](Self::type_for_table_name) for arbitrary Wire names.
     pub fn type_for_table(&self, table: u64) -> Option<&str> {
         self.abi.table_types.get(&table).map(|t| t.as_str())
+    }
+
+    /// The row type for a table name. Wire (`sysio`) names are matched exactly;
+    /// EOSIO names retain their legacy name conversion semantics.
+    pub fn type_for_table_name(&self, table: &str) -> Option<&str> {
+        self.abi.type_for_table_name(table)
     }
 
     /// The struct type for `action` (u64 name), if the ABI declares it.

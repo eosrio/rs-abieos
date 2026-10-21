@@ -45,6 +45,12 @@ fn scalar<'a>(p: &mut JsonParser<'a>) -> Result<Cow<'a, str>, String> {
     }
 }
 
+fn parse_table_id(p: &mut JsonParser<'_>) -> Result<u16, String> {
+    scalar(p)?
+        .parse()
+        .map_err(|_| "Invalid table_id: expected integer in range 0..65535".into())
+}
+
 /// Collect a JSON array of strings into `scratch` (reused across calls) and
 /// freeze it into an `Arc<[IStr]>` (mirrors `strings_from_json_arc`).
 fn istr_arc_vec(p: &mut JsonParser<'_>, scratch: &mut Vec<IStr>) -> Result<Arc<[IStr]>, String> {
@@ -261,7 +267,7 @@ pub(crate) fn parse_abi_def(json: &str) -> Result<AbiDef, String> {
                                         t.key_types = istr_arc_vec(&mut p, &mut sscratch)?
                                     }
                                     "type" => t.type_name = IStr::from(scalar(&mut p)?.as_ref()),
-                                    "table_id" => t.table_id = scalar(&mut p)?.parse().unwrap_or(0),
+                                    "table_id" => t.table_id = parse_table_id(&mut p)?,
                                     "secondary_indexes" => {
                                         let mut idx_vec = Vec::new();
                                         let mut idx_it = ArrayIter::new();
@@ -280,8 +286,7 @@ pub(crate) fn parse_abi_def(json: &str) -> Result<AbiDef, String> {
                                                                 IStr::from(scalar(&mut p)?.as_ref())
                                                         }
                                                         "table_id" => {
-                                                            idx.table_id =
-                                                                scalar(&mut p)?.parse().unwrap_or(0)
+                                                            idx.table_id = parse_table_id(&mut p)?
                                                         }
                                                         _ => p.skip_value()?,
                                                     }
@@ -494,6 +499,10 @@ pub(crate) fn parse_abi_def(json: &str) -> Result<AbiDef, String> {
                     p.skip_ws();
                     if p.peek() == Some(b'"') {
                         def.protobuf_types = IStr::from(p.parse_string()?.as_ref());
+                    } else if p.peek() == Some(b'{') {
+                        // Wire's native ABI JSON uses a descriptor object; the
+                        // binary ABI stores its JSON text in a string field.
+                        def.protobuf_types = IStr::from(p.raw_value()?);
                     } else {
                         p.skip_value()?;
                     }

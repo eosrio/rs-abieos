@@ -5,6 +5,7 @@ pub(crate) enum Json<'a> {
     Null,
     Bool(bool),
     String(std::borrow::Cow<'a, str>),
+    Number(std::borrow::Cow<'a, str>),
     Array(Vec<Json<'a>>),
     Object(Vec<(std::borrow::Cow<'a, str>, Json<'a>)>),
 }
@@ -26,7 +27,7 @@ impl<'a> Json<'a> {
 
     pub(crate) fn as_str_like(&self) -> Result<&str, String> {
         match self {
-            Json::String(s) => Ok(s.as_ref()),
+            Json::String(s) | Json::Number(s) => Ok(s.as_ref()),
             _ => Err("Expected string".into()),
         }
     }
@@ -191,9 +192,18 @@ impl<'a> JsonParser<'a> {
             Some(b'"') => self.parse_string().map(Json::String),
             Some(b'[') => self.parse_array(),
             Some(b'{') => self.parse_object(),
-            Some(b'-' | b'0'..=b'9') => self.parse_number().map(Json::String),
+            Some(b'-' | b'0'..=b'9') => self.parse_number().map(Json::Number),
             _ => Err("json parse error".into()),
         }
+    }
+
+    /// Validate and borrow one JSON value's source text without materializing it.
+    /// Internal whitespace and number/string token kinds are preserved.
+    pub(crate) fn raw_value(&mut self) -> Result<&'a str, String> {
+        self.skip_ws();
+        let start = self.pos;
+        self.skip_value()?;
+        std::str::from_utf8(&self.src[start..self.pos]).map_err(|e| e.to_string())
     }
 
     /// Structurally consume one JSON value without materializing it, used to

@@ -1,6 +1,177 @@
 #![cfg(feature = "rust-backend")]
 
-use rs_abieos::{AbiHandle, Abieos};
+use rs_abieos::{AbiHandle, AbiLike, Abieos, NameLike};
+
+#[test]
+fn sysio_table_names_do_not_alias_eosio_names() {
+    let abi_json = r#"{
+        "version":"sysio::abi/1.2",
+        "structs":[
+            {"name":"A","base":"","fields":[{"name":"x","type":"uint8"}]},
+            {"name":"B","base":"","fields":[{"name":"x","type":"uint16"}]}
+        ],
+        "tables":[
+            {"name":"foo.bar","type":"A","table_id":1},
+            {"name":"foo_bar","type":"B","table_id":2},
+            {"name":"LongTableNameWithSharedPrefix-A","type":"A","table_id":3},
+            {"name":"LongTableNameWithSharedPrefix-B","type":"B","table_id":4},
+            {"name":"foo.bar.","type":"B","table_id":5}
+        ]
+    }"#;
+    let abieos = Abieos::new();
+    let binary = abieos.abi_json_to_bin(abi_json).unwrap();
+    for mut handle in [
+        AbiHandle::from_json(abi_json).unwrap(),
+        AbiHandle::from_bin(&binary).unwrap(),
+    ] {
+        assert_eq!(handle.type_for_table_name("foo.bar"), Some("A"));
+        assert_eq!(handle.type_for_table_name("foo_bar"), Some("B"));
+        assert_eq!(handle.type_for_table_name("foo.bar."), Some("B"));
+        assert!(handle.type_for_table_name("foo-bar").is_none());
+        let numeric = abieos.string_to_name("foo.bar").unwrap();
+        assert_eq!(handle.type_for_table(numeric), Some("A"));
+        assert_eq!(
+            handle.decode_table_row(numeric, &[7]).unwrap(),
+            r#"{"x":7}"#
+        );
+        let row_type = handle.type_for_table_name("foo_bar").unwrap().to_owned();
+        assert_eq!(
+            handle.bin_to_json(&row_type, &[0, 1]).unwrap(),
+            r#"{"x":256}"#
+        );
+    }
+    for abi in [AbiLike::Json(abi_json.into()), AbiLike::Bin(binary)] {
+        let mut contract = abieos.contract(NameLike::StringRef("test"));
+        contract.load_abi(abi).unwrap();
+        for (name, expected) in [
+            ("foo.bar", "A"),
+            ("foo_bar", "B"),
+            ("LongTableNameWithSharedPrefix-A", "A"),
+            ("LongTableNameWithSharedPrefix-B", "B"),
+            ("foo.bar.", "B"),
+        ] {
+            assert_eq!(abieos.get_type_for_table("test", name).unwrap(), expected);
+            assert_eq!(contract.get_type_for_table(name).unwrap(), expected);
+        }
+        // The legacy numeric lookup must still find the canonical EOSIO name,
+        // regardless of a later arbitrary name with the same lossy projection.
+        let account = abieos.string_to_name("test").unwrap();
+        let table = abieos.string_to_name("foo.bar").unwrap();
+        assert_eq!(
+            abieos.get_type_for_table_native(account, table).unwrap(),
+            "A"
+        );
+        assert!(abieos.get_type_for_table("test", "foo-bar").is_err());
+    }
+}
+
+#[test]
+fn sysio_enum_numbers_are_not_symbolic_names_or_suffixes() {
+    let abi = r#"{
+        "version":"sysio::abi/1.2",
+        "enums":[
+            {"name":"tier","type":"uint8","values":[
+                {"name":"TIER_0","value":1}, {"name":"2","value":7}
+            ]},
+            {"name":"ambiguous","type":"uint8","values":[
+                {"name":"TIER_0","value":1}, {"name":"LEVEL_0","value":2}
+            ]}
+        ]
+    }"#;
+    let abieos = Abieos::new();
+    let binary = abieos.abi_json_to_bin(abi).unwrap();
+    for mut handle in [
+        AbiHandle::from_json(abi).unwrap(),
+        AbiHandle::from_bin(&binary).unwrap(),
+    ] {
+        assert_eq!(handle.json_to_bin("tier", "0").unwrap(), [0]);
+        assert_eq!(handle.json_to_bin("tier", "2").unwrap(), [2]);
+        assert_eq!(handle.json_to_bin("tier", r#""0""#).unwrap(), [1]);
+        assert_eq!(handle.json_to_bin("tier", r#""2""#).unwrap(), [7]);
+        assert_eq!(handle.json_to_bin("ambiguous", "0").unwrap(), [0]);
+        assert!(handle.json_to_bin("ambiguous", r#""0""#).is_err());
+    }
+}
+
+#[test]
+fn sysio_protobuf_descriptor_objects_and_strings_preserve_binary_payload() {
+    let object_abi = r#"{"version":"sysio::abi/1.3","protobuf_types":{"file":[{"name":"test.proto","syntax":"proto3","messageType":[{"name":"M","field":[{"name":"value","number":1,"type":"TYPE_UINT32"}]}]}]}}"#;
+    let string_abi = r#"{"version":"sysio::abi/1.3","protobuf_types":"{\"file\":[{\"name\":\"test.proto\",\"syntax\":\"proto3\",\"messageType\":[{\"name\":\"M\",\"field\":[{\"name\":\"value\",\"number\":1,\"type\":\"TYPE_UINT32\"}]}]}]}"}"#;
+    let abieos = Abieos::new();
+    let object_bin = abieos.abi_json_to_bin(object_abi).unwrap();
+    let string_bin = abieos.abi_json_to_bin(string_abi).unwrap();
+    assert_eq!(object_bin, string_bin);
+    let json = abieos.abi_bin_to_json(&object_bin).unwrap();
+    assert!(
+        json.contains(r#""protobuf_types":{"file":[{"name":"test.proto""#),
+        "{json}"
+    );
+    assert!(json.contains(r#""number":1"#), "{json}");
+    assert_eq!(abieos.abi_json_to_bin(&json).unwrap(), object_bin);
+
+    // Object whitespace must survive a binary -> JSON -> binary round trip.
+    let spaced = r#"{"version":"sysio::abi/1.3","protobuf_types": { "file": [] }}"#;
+    let bin = abieos.abi_json_to_bin(spaced).unwrap();
+    let json = abieos.abi_bin_to_json(&bin).unwrap();
+    assert!(
+        json.contains(r#""protobuf_types":{ "file": [] }"#),
+        "{json}"
+    );
+    assert_eq!(abieos.abi_json_to_bin(&json).unwrap(), bin);
+
+    // A string can also contain outer whitespace, which JSON object syntax
+    // cannot distinguish from whitespace around the ABI field itself.
+    let padded = r#"{"version":"sysio::abi/1.3","protobuf_types":" \n{\"file\":[]} \n"}"#;
+    let bin = abieos.abi_json_to_bin(padded).unwrap();
+    let json = abieos.abi_bin_to_json(&bin).unwrap();
+    assert_eq!(abieos.abi_json_to_bin(&json).unwrap(), bin);
+}
+
+#[test]
+fn sysio_primary_and_secondary_table_ids_require_u16_values() {
+    let abieos = Abieos::new();
+    for invalid in [
+        "65536",
+        "-1",
+        "1.5",
+        "1e2",
+        r#""invalid""#,
+        "null",
+        "true",
+        "[]",
+        "{}",
+    ] {
+        for table in [
+            format!(r#"{{"name":"rows","type":"uint8","table_id":{invalid}}}"#),
+            format!(
+                r#"{{"name":"rows","type":"uint8","secondary_indexes":[{{"name":"byfoo","key_type":"uint64","table_id":{invalid}}}]}}"#
+            ),
+        ] {
+            let abi = format!(r#"{{"version":"sysio::abi/1.2","tables":[{table}]}}"#);
+            assert!(abieos.abi_json_to_bin(&abi).is_err(), "accepted {abi}");
+            assert!(abieos.set_abi_json("test", &abi).is_err(), "accepted {abi}");
+            assert!(AbiHandle::from_json(&abi).is_err(), "accepted {abi}");
+        }
+    }
+    for (valid, expected) in [
+        ("0", 0),
+        ("65535", 65535),
+        (r#""0""#, 0),
+        (r#""65535""#, 65535),
+    ] {
+        let abi = format!(
+            r#"{{"version":"sysio::abi/1.2","tables":[{{"name":"rows","type":"uint8","table_id":{valid},"secondary_indexes":[{{"name":"byfoo","key_type":"uint64","table_id":{valid}}}]}}]}}"#
+        );
+        let bin = abieos.abi_json_to_bin(&abi).unwrap();
+        let json = abieos.abi_bin_to_json(&bin).unwrap();
+        assert_eq!(
+            json.matches(&format!(r#""table_id":{expected}"#)).count(),
+            2,
+            "{json}"
+        );
+        assert_eq!(abieos.abi_json_to_bin(&json).unwrap(), bin);
+    }
+}
 
 /// Real on-chain `sysio.token` raw binary ABI from Wire Testnet (`sysio::abi/1.2`).
 const SYSIO_TOKEN_RAW_ABI_HEX: &str = concat!(
