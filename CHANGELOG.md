@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.7.0] - 2026-10-20
+## [0.7.0] - 2026-10-22
 
 ### Added
 - Expanded **`AbiHandle`** (`rust-backend`) into a complete standalone codec:
@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `json_to_bin(&self, datatype: &str, json: &str) -> Result<Vec<u8>, AbieosError>`
   - `bin_to_json(&self, datatype: &str, bin: &[u8]) -> Result<String, AbieosError>`
 - Added integration test coverage for `action_results`, the new `AbieosContract` methods, and the full `AbiHandle` encode/decode surface.
+- Added native **Wire Network (`sysio::abi/1.*`)** ABI support in `rust-backend`:
+  - Accepts `sysio::abi/1.*` in `AbiDef::check_version()`, preserving the exact version prefix across binary and JSON round-trips.
+  - Supports Wire `TableDef` extensions: arbitrary string table names in `sysio::abi/*` binary layout, `table_id: u16`, and `secondary_indexes: Vec<IndexDef>`.
+  - Supports top-level `enums: Vec<EnumDef>` (`name`, `type`, `values: Vec<{name, value}>`) and `protobuf_types` in both JSON and binary ABI formats, including `TypeKind::Enum` value/suffix encoding and decoding (`tests/sysio_abi.rs`).
 
 ### Changed
 - **Default Backend Flip:** `rust-backend` is now the default Cargo feature (`default = ["rust-backend"]`). Default builds are 100% pure Rust, require no C++ compiler, `cmake`, `libclang`, or `bindgen`, and build natively on `x86_64-pc-windows-msvc` as well as Linux and macOS. The vendored C++ implementation remains available via `--no-default-features --features cpp-backend` (and `cpp-oracle` for differential testing).
