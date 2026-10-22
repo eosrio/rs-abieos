@@ -56,6 +56,7 @@ fn ensure_submodule() {
 fn generate_bindings(out_bindings: &Path) {
     bindgen::builder()
         .header("lib/abieos/src/abieos.h")
+        .rust_edition(bindgen::RustEdition::Edition2024)
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .expect("Unable to generate bindings")
@@ -96,11 +97,12 @@ fn main() {
     // emitting a wall of C++ template errors.
     if target_os == "windows" && target_env == "msvc" {
         panic!(
-            "\n\nrs_abieos cannot be built for the `x86_64-pc-windows-msvc` target.\n\
+            "\n\nrs_abieos with `cpp-backend` cannot be built for the `x86_64-pc-windows-msvc` target.\n\
              The vendored abieos C++ library depends on libstdc++/libc++ semantics that\n\
-             MSVC's STL does not provide. Build for the GNU (MinGW-w64) target instead:\n\n\
+             MSVC's STL does not provide. Either use the default `rust-backend`, or build\n\
+             `cpp-backend` for the GNU (MinGW-w64) target instead:\n\n\
              \x20   rustup target add x86_64-pc-windows-gnu\n\
-             \x20   cargo build --target x86_64-pc-windows-gnu\n\n\
+             \x20   cargo build --target x86_64-pc-windows-gnu --features cpp-backend\n\n\
              A MinGW-w64 `g++` must be on PATH (e.g. WinLibs or MSYS2). See the README\n\
              \"Windows\" section for details.\n"
         );

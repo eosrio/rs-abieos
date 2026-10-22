@@ -1,10 +1,11 @@
-use super::swar::{hasless, hasvalue, haszero, word_at, HI, LO};
+use super::swar::{HI, LO, hasless, hasvalue, haszero, word_at};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Json<'a> {
     Null,
     Bool(bool),
     String(std::borrow::Cow<'a, str>),
+    Number(std::borrow::Cow<'a, str>),
     Array(Vec<Json<'a>>),
     Object(Vec<(std::borrow::Cow<'a, str>, Json<'a>)>),
 }
@@ -26,7 +27,7 @@ impl<'a> Json<'a> {
 
     pub(crate) fn as_str_like(&self) -> Result<&str, String> {
         match self {
-            Json::String(s) => Ok(s.as_ref()),
+            Json::String(s) | Json::Number(s) => Ok(s.as_ref()),
             _ => Err("Expected string".into()),
         }
     }
@@ -155,7 +156,7 @@ impl<'a> JsonParser<'a> {
     pub(crate) fn member_key(&mut self) -> Result<std::borrow::Cow<'a, str>, String> {
         self.skip_ws();
         let key = self.parse_string()?;
-        self.expect(b':', &super::with_field_path("", &key))?;
+        self.expect(b':', &format!("in field '{key}'"))?;
         Ok(key)
     }
 
@@ -166,10 +167,7 @@ impl<'a> JsonParser<'a> {
         match self.bump()? {
             b',' => Ok(false),
             b'}' => Ok(true),
-            _ => {
-                let path = super::push_field_path("", "object");
-                Err(format!("{}: Missing ',' or '}}'", path))
-            }
+            _ => Err("object: Missing ',' or '}'".into()),
         }
     }
 
@@ -192,11 +190,20 @@ impl<'a> JsonParser<'a> {
                 Ok(Json::Bool(false))
             }
             Some(b'"') => self.parse_string().map(Json::String),
-            Some(b'[') => self.parse_array(""),
-            Some(b'{') => self.parse_object(""),
-            Some(b'-' | b'0'..=b'9') => self.parse_number().map(Json::String),
+            Some(b'[') => self.parse_array(),
+            Some(b'{') => self.parse_object(),
+            Some(b'-' | b'0'..=b'9') => self.parse_number().map(Json::Number),
             _ => Err("json parse error".into()),
         }
+    }
+
+    /// Validate and borrow one JSON value's source text without materializing it.
+    /// Internal whitespace and number/string token kinds are preserved.
+    pub(crate) fn raw_value(&mut self) -> Result<&'a str, String> {
+        self.skip_ws();
+        let start = self.pos;
+        self.skip_value()?;
+        std::str::from_utf8(&self.src[start..self.pos]).map_err(|e| e.to_string())
     }
 
     /// Structurally consume one JSON value without materializing it, used to
@@ -335,7 +342,7 @@ impl<'a> JsonParser<'a> {
                 b'"' => {
                     return String::from_utf8(out)
                         .map(std::borrow::Cow::Owned)
-                        .map_err(|_| "Invalid encoding in string".into())
+                        .map_err(|_| "Invalid encoding in string".into());
                 }
                 b'\\' => {
                     if pos >= self.src.len() {
@@ -364,7 +371,7 @@ impl<'a> JsonParser<'a> {
                                         b'a'..=b'f' => (self.src[pos] - b'a' + 10) as u32,
                                         b'A'..=b'F' => (self.src[pos] - b'A' + 10) as u32,
                                         _ => {
-                                            return Err("Invalid escape character in string".into())
+                                            return Err("Invalid escape character in string".into());
                                         }
                                     };
                                 pos += 1;
@@ -411,7 +418,7 @@ impl<'a> JsonParser<'a> {
             .map_err(|_| "json parse error".into())
     }
 
-    fn parse_array(&mut self, _path: &str) -> Result<Json<'a>, String> {
+    fn parse_array(&mut self) -> Result<Json<'a>, String> {
         self.expect(b'[', "Expected [")?;
         self.depth += 1;
         let mut values = Vec::new();
@@ -423,9 +430,7 @@ impl<'a> JsonParser<'a> {
         }
         let mut index = 0usize;
         loop {
-            // Track array index for path context
-            let elem_path = format!("[{}]", index);
-            values.push(self.parse_value_with_path(&elem_path)?);
+            values.push(self.parse_value()?);
             self.skip_ws();
             match self.bump()? {
                 b',' => {
@@ -435,12 +440,12 @@ impl<'a> JsonParser<'a> {
                     self.depth -= 1;
                     return Ok(Json::Array(values));
                 }
-                _ => return Err(super::with_field_path(&elem_path, "next element or ']'")),
+                _ => return Err(format!("[{index}] > next element or ']'")),
             }
         }
     }
 
-    fn parse_object(&mut self, _path: &str) -> Result<Json<'a>, String> {
+    fn parse_object(&mut self) -> Result<Json<'a>, String> {
         self.expect(b'{', "Expected {")?;
         self.depth += 1;
         let mut fields = Vec::new();
@@ -450,14 +455,11 @@ impl<'a> JsonParser<'a> {
             self.depth -= 1;
             return Ok(Json::Object(fields));
         }
-        let current_path = String::new();
         loop {
             self.skip_ws();
             let key = self.parse_string()?;
-            // Build path for better errors
-            let field_path = super::push_field_path(&current_path, &key);
-            self.expect(b':', &super::with_field_path(&field_path, "value"))?;
-            let value = self.parse_value_with_path(&field_path)?;
+            self.expect(b':', &format!("{key} > value"))?;
+            let value = self.parse_value()?;
             fields.push((key, value));
             self.skip_ws();
             match self.bump()? {
@@ -466,7 +468,10 @@ impl<'a> JsonParser<'a> {
                     self.depth -= 1;
                     return Ok(Json::Object(fields));
                 }
-                _ => return Err(super::with_field_path(&field_path, "next field or '}'")),
+                _ => {
+                    let last_key = &fields.last().expect("pushed above").0;
+                    return Err(format!("{last_key} > next field or '}}'"));
+                }
             }
         }
     }
@@ -474,6 +479,42 @@ impl<'a> JsonParser<'a> {
 
 pub(crate) fn parse_json(src: &str) -> Result<Json<'_>, String> {
     JsonParser::new(src).parse()
+}
+
+// The ABI codec intentionally accepts some legacy numeric spellings. Raw
+// metadata emission needs JSON's stricter grammar without changing that codec.
+pub(crate) fn is_json_object(src: &str) -> bool {
+    fn digits(s: &str) -> bool {
+        !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
+    }
+    fn number(s: &str) -> bool {
+        let s = s.strip_prefix('-').unwrap_or(s);
+        let (mantissa, exponent) = s
+            .split_once(['e', 'E'])
+            .map_or((s, None), |(m, e)| (m, Some(e)));
+        let (integer, fraction) = mantissa
+            .split_once('.')
+            .map_or((mantissa, None), |(i, f)| (i, Some(f)));
+        let valid_integer = integer == "0"
+            || (matches!(integer.as_bytes().first(), Some(b'1'..=b'9')) && digits(integer));
+        valid_integer
+            && fraction.is_none_or(digits)
+            && exponent.is_none_or(|e| digits(e.strip_prefix(['+', '-']).unwrap_or(e)))
+    }
+    fn valid_numbers(value: &Json<'_>) -> bool {
+        match value {
+            Json::Number(s) => number(s),
+            Json::Array(values) => values.iter().all(valid_numbers),
+            Json::Object(fields) => fields.iter().all(|(_, v)| valid_numbers(v)),
+            _ => true,
+        }
+    }
+    // The legacy whitespace scanner accepts all ASCII controls <= space.
+    // JSON only permits space, tab, CR and LF outside strings; string parsing
+    // already rejects every unescaped control within a string.
+    !src.bytes()
+        .any(|b| b < b' ' && !matches!(b, b'\t' | b'\r' | b'\n'))
+        && matches!(parse_json(src), Ok(value @ Json::Object(_)) if valid_numbers(&value))
 }
 
 pub(crate) fn quote_json(s: &str, out: &mut String) {
@@ -490,14 +531,4 @@ pub(crate) fn quote_json(s: &str, out: &mut String) {
         }
     }
     out.push('"');
-}
-// TODO(full-parity): Thread current_path through parse_value and all recursive parsers
-// so that errors can report full paths like "in field 'foo.bar[2].baz'"
-
-// TODO(full-parity): Implement real path threading in parse_value_with_path
-// and update all call sites in parse_object / parse_array.
-impl<'a> JsonParser<'a> {
-    pub(crate) fn parse_value_with_path(&mut self, _path: &str) -> Result<Json<'a>, String> {
-        self.parse_value()
-    }
 }

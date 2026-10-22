@@ -22,7 +22,7 @@
 
 #![cfg(feature = "rust-backend")]
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::OnceLock;
 
 use rs_abieos::Abieos;

@@ -13,76 +13,58 @@
 
 #### [API Documentation](https://docs.rs/rs_abieos/)
 
-`rs_abieos` is a Rust library that provides a wrapper for the `abieos` C++ library. It allows you to handle data from
-Antelope blockchains by providing functionalities such as converting between binary and JSON formats for ABI files,
-converting between native and string names, and more.
+`rs_abieos` is a high-performance Rust library for Antelope/EOSIO ABI serialization, deserialization, and name conversion.
 
-This wrapper is currently based on the vanilla version of the [AntelopeIO/abieos](https://github.com/AntelopeIO/abieos)
+Starting in **v0.7.0**, `rs_abieos` uses its **pure-Rust backend (`rust-backend`) by default** — zero C/C++ toolchain dependencies, no `libclang` or `bindgen` required, and full native support across Linux, macOS, and Windows (both `msvc` and `gnu`). The original vendored [AntelopeIO/abieos](https://github.com/AntelopeIO/abieos) C++ library remains available as an opt-in feature (`cpp-backend` / `cpp-oracle`).
 
 ## Requirements
 
-`rs_abieos` builds the vendored [`abieos`](https://github.com/AntelopeIO/abieos) C++
-library from source, so a C++ toolchain and `libclang` (used by `bindgen`) are
-required. **Linux**, **Windows** (`x86_64-pc-windows-gnu`) and **macOS**
-(Apple Clang + `libc++`) are all verified in CI.
+### Default Build (`rust-backend`)
 
-### Linux
+Only a standard Rust toolchain (Edition 2024 / Rust 1.85+) is required. No C++ compiler, `cmake`, or `libclang` is needed:
 
-- A C++ toolchain. We recommend Clang 18 to build the `abieos` C++ library:
+```bash
+cargo add rs_abieos
+cargo build
+```
+
+### Optional C++ Backend Requirements (`cpp-backend` / `cpp-oracle`)
+
+If you opt into `cpp-backend` or `cpp-oracle`, `rs_abieos` builds the vendored [`abieos`](https://github.com/AntelopeIO/abieos) C++ library from source, requiring a C++17 toolchain and `libclang` (used by `bindgen`). **Linux**, **Windows** (`x86_64-pc-windows-gnu`), and **macOS** (Apple Clang + `libc++`) are verified in CI.
+
+#### Linux (`cpp-backend`)
+
+- A C++ toolchain (Clang 18+ or GCC) and `libclang`:
 
   ```bash
-  wget https://apt.llvm.org/llvm.sh
-  chmod +x llvm.sh
-  sudo ./llvm.sh 18
+  sudo apt-get update && sudo apt-get install -y clang cmake
   ```
 
-### macOS
+#### macOS (`cpp-backend`)
 
-- Xcode command-line tools (`xcode-select --install`) provide Clang and
-  `libclang`. No extra configuration is needed — the build links `libc++`
-  automatically.
+- Xcode command-line tools (`xcode-select --install`) provide Clang and `libclang`. The build links `libc++` automatically.
 
-### Windows
+#### Windows (`cpp-backend`)
 
-abieos depends on libstdc++/libc++ standard-library semantics (for example,
-`std::string_view`'s iterator being a raw `const char*`) that MSVC's STL does
-**not** provide. The `*-pc-windows-msvc` target is therefore unsupported — the
-build fails fast with an explanatory message. Use the GNU (MinGW-w64) target
-instead:
+The vendored C++ `abieos` depends on libstdc++/libc++ standard-library semantics that MSVC's STL does not provide. While the default `rust-backend` works natively on `*-pc-windows-msvc`, building `cpp-backend` on Windows requires the `x86_64-pc-windows-gnu` (MinGW-w64) target:
 
-1. Install **MinGW-w64 g++** (MSVCRT runtime, to match the Rust `-gnu` target).
-   [WinLibs](https://winlibs.com/) works well:
-
+1. Install **MinGW-w64 g++** (e.g. via [WinLibs](https://winlibs.com/) or MSYS2):
    ```powershell
    winget install --id BrechtSanders.WinLibs.POSIX.MSVCRT -e --scope user
    ```
-
-   MSYS2 (`pacman -S mingw-w64-x86_64-gcc`) also works. Ensure the toolchain's
-   `bin` directory is on `PATH` — it provides `g++` at build time and
-   `libstdc++-6.dll` / `libgcc_s_seh-1.dll` / `libwinpthread-1.dll` at run time.
-
 2. Install **LLVM** for `libclang` (required by `bindgen`):
-
    ```powershell
    winget install --id LLVM.LLVM -e
-   ```
-
-   Then point `bindgen` at it (or add `…\LLVM\bin` to `PATH`):
-
-   ```powershell
    $env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
    ```
-
 3. Add the Rust GNU target:
-
    ```powershell
    rustup target add x86_64-pc-windows-gnu
    ```
 
 ## Setup Instructions
 
-To use `rs_abieos` in your Rust project, add it as a dependency in your
-`Cargo.toml` file:
+Add `rs_abieos` to your `Cargo.toml`:
 
 ```bash
 cargo add rs_abieos
@@ -90,240 +72,162 @@ cargo add rs_abieos
 
 ### Backend Features
 
-`rs_abieos` has a dual-backend layout:
+`rs_abieos` provides a dual-backend architecture:
 
-- `cpp-backend` (default): builds and uses the vendored C++ `abieos` library.
-- `rust-backend`: uses the pure-Rust compatibility backend and does not require
-  a C++ compiler, `libclang`, or `bindgen` at build time.
-- `cpp-oracle`: builds the vendored C++ backend as an oracle for differential
-  parity tests. When `rust-backend` is also enabled, the safe Rust API uses the
-  Rust backend and exposes the oracle bindings as `rs_abieos::cpp_oracle`.
-
-Recommended application usage:
-
-- Use the default features when you want the current C++ implementation and
-  have a supported C++ toolchain.
-- Use `default-features = false, features = ["rust-backend"]` when you want a
-  pure-Rust build or need `*-pc-windows-msvc` support.
-- Use `features = ["rust-backend", "cpp-oracle"]` only for parity checks on
-  hosts that can build the vendored C++ backend.
+- `rust-backend` (**default**): uses the pure-Rust engine. Requires no C++ compiler, `libclang`, or `bindgen` at build time, works on all Rust targets (including `*-pc-windows-msvc`), and exposes [`AbiHandle`] for standalone, context-free ABI serialization and deserialization.
+- `cpp-backend`: builds and links the vendored C++ `abieos` library (`default-features = false, features = ["cpp-backend"]`).
+- `cpp-oracle`: builds the vendored C++ backend as an oracle for differential parity tests. When `rust-backend` is also enabled, the safe Rust API uses the Rust backend and exposes the C++ oracle bindings as `rs_abieos::cpp_oracle`.
 
 Recommended CI checks:
 
 ```bash
-cargo check
-cargo check --no-default-features --features rust-backend
-cargo check --no-default-features --features "rust-backend cpp-oracle"
-cargo build --no-default-features --features rust-backend --bin rs_abieos
-cargo build --no-default-features --features rust-backend --examples
+cargo check --all-targets
+cargo check --all-targets --no-default-features --features cpp-backend
+cargo check --all-targets --no-default-features --features "rust-backend cpp-oracle"
+cargo build --bin rs_abieos
+cargo build --examples
 ```
 
-The pure-Rust backend keeps the existing safe Rust API:
+Run tests with the default pure-Rust backend:
 
 ```bash
-cargo test --no-default-features --features rust-backend
+cargo test
 ```
 
-On a host with the C++ backend toolchain installed, run the differential oracle
-tests with:
+On a host with the C++ toolchain installed, run the C++ backend or differential oracle tests with:
 
 ```bash
+cargo test --no-default-features --features cpp-backend
 cargo test --no-default-features --features "rust-backend cpp-oracle"
 ```
 
-Unsupported combinations are intentionally explicit:
-
-- `cargo check --no-default-features` fails because no backend is selected.
-- On `*-pc-windows-msvc`, the default C++ backend fails fast; use
-  `cargo check --no-default-features --features rust-backend`.
-
-Then download and compile the library:
-
-```bash
-# Linux / macOS
-cargo build
-# or, if your default compiler differs, build abieos with clang-18:
-CXX=clang++-18 CC=clang-18 cargo build
-```
-
-```powershell
-# Windows (from the prerequisites above)
-cargo build --target x86_64-pc-windows-gnu
-```
-
-> On Windows, pass `--target x86_64-pc-windows-gnu` to every `cargo`
-> invocation (`build`, `test`, `run`), or set it once in `.cargo/config.toml`:
->
-> ```toml
-> [build]
-> target = "x86_64-pc-windows-gnu"
-> ```
-
 ## Quick Usage Example
 
-Short example of how to use the library on new Rust binary project:
+### Standalone `AbiHandle` (Recommended for `rust-backend`)
+
+`AbiHandle` holds a pre-parsed ABI directly without a C context or single-slot-per-account map, making it ideal for high-throughput and historical block/delta decoders:
 
 ```rust
-// Step 1 - Bring rs_abieos into scope
-use rs_abieos::Abieos;
+use rs_abieos::{AbiHandle, Abieos};
 
 fn main() {
-  // Step 2 - Create an instance of Abieos
-  let abieos = Abieos::new();
+    let abieos = Abieos::new();
+    let transfer_u64 = abieos.string_to_name("transfer").unwrap();
 
-  // Let's try to convert a string to u64 name
-  let name = "alice";
-  let name_u64 = abieos.string_to_name(name).unwrap();
-  println!("Name: {}, Name_u64: {}", name, name_u64);
+    let abi_json = std::fs::read_to_string("abis/eosio.abi").unwrap();
+    let mut handle = AbiHandle::from_json(&abi_json).unwrap();
+
+    // Look up action / table / action_result types by u64 name
+    println!("Action type: {:?}", handle.type_for_action(transfer_u64));
+
+    // Serialize JSON -> binary / hex and deserialize back into a reusable String buffer
+    let bin = handle.json_to_bin("buyrambytes", r#"{"payer":"alice","receiver":"bob","bytes":8192}"#).unwrap();
+    let mut out = String::new();
+    handle.bin_to_json_into("buyrambytes", &bin, &mut out).unwrap();
+    println!("Decoded JSON: {out}");
 }
 ```
 
-## Detailed Example
-
-For this example, download the [eosio.system abi file](https://raw.githubusercontent.com/eosrio/rs-abieos/master/abis/eosio.abi) and copy to your project root as eosio.abi.json
+### Context-Based `Abieos` & `AbieosContract`
 
 ```rust
 use rs_abieos::{AbiLike, Abieos, NameLike};
 
 fn main() {
-  let abieos = Abieos::new();
-  let path = "eosio.abi.json";
+    let abieos = Abieos::new();
+    let abi_content = std::fs::read_to_string("abis/eosio.abi").expect("Failed to read ABI file");
 
-  // Read the ABI file
-  let abi_content = match std::fs::read_to_string(path) {
-    Ok(content) => content,
-    Err(e) => {
-      eprintln!("Failed to read ABI file: {}", e);
-      return;
-    }
-  };
+    let mut eosio_contract = abieos.contract(NameLike::StringRef("eosio"));
+    eosio_contract
+        .load_abi(AbiLike::Json(abi_content))
+        .expect("Failed to load ABI");
 
-  // define the NameLike enum to hold the account name using either a string (String) or a reference (StringRef) or an u64 (U64)
-  let account_name = "eosio";
-  let eosio = NameLike::StringRef(&account_name);
-
-  // create a eosio contract instance using the NameLike enum
-  let mut eosio_contract = abieos.contract(eosio);
-
-  // load the abi using the contract instance
-  // load_abi method takes an AbiLike enum which can be either Json (String), Hex (String) or Bin (Vec<u8>)
-  let load_status = eosio_contract.load_abi(AbiLike::Json(abi_content));
-
-  // check if the abi was loaded successfully
-  match load_status {
-    Ok(_) => println!("ABI loaded successfully"),
-    Err(e) => eprintln!("Failed to load ABI: {}", e),
-  }
-
-  // Let's serialize an action using the eosio contract instance
-
-  // define the action data (example eosio::buyram)
-  let action_data = r#"{
-            "payer":"alice",
-            "receiver":"bob",
-            "quant":"100.0000 SYS"
+    let action_data = r#"{
+        "payer":"alice",
+        "receiver":"bob",
+        "bytes":8192
     }"#;
 
-  // retrieve the datatype for the action
-  let datatype = match eosio_contract.get_type_for_action("buyram") {
-    Ok(datatype) => datatype,
-    Err(e) => {
-      eprintln!("Failed to get datatype for action: {}", e);
-      return;
-    }
-  };
+    let datatype = eosio_contract
+        .get_type_for_action("buyrambytes")
+        .expect("Failed to get datatype for action");
 
-  // serialize the action data
-  let serialized_action = eosio_contract.json_to_hex(datatype.as_str(), action_data);
+    let hex_action = eosio_contract
+        .json_to_hex(&datatype, action_data)
+        .expect("Failed to serialize action data");
+    println!("Serialized action data: {hex_action}");
 
-  let hex_action = match serialized_action {
-    Ok(hex_data) => {
-      println!("Serialized action data: {}", hex_data);
-      hex_data
-    }
-    Err(e) => {
-      eprintln!("Failed to serialize action data: {}", e);
-      return;
-    },
-  };
-
-  // Let's deserialize the serialized action data
-  let json_action = eosio_contract.hex_to_json(datatype.as_str(), &hex_action);
-
-  match json_action {
-    Ok(json_data) => println!("Deserialized action data: {}", json_data),
-    Err(e) => eprintln!("Failed to deserialize action data: {}", e),
-  }
-
+    let json_action = eosio_contract
+        .hex_to_json(&datatype, &hex_action)
+        .expect("Failed to deserialize action data");
+    println!("Deserialized action data: {json_action}");
 }
 ```
 
-`bin-src/main.rs` contains a more detailed executable example that demonstrates multiple use cases for the library.
+`bin-src/main.rs` contains a more detailed executable example demonstrating multiple use cases for the library.
 
-Please refer to the library's [API documentation](https://docs.rs/rs_abieos/) for more detailed information on each function.
-
-### Library Development
-
-#### Testing
-
-To run the test cases, use the following command:
-
-```bash
-# Linux / macOS
-cargo test
-# or
-CXX=clang++-18 CC=clang-18 cargo test
-```
-
-```powershell
-# Windows
-cargo test --target x86_64-pc-windows-gnu
-```
-
-Pure-Rust backend and differential oracle tests:
-
-```bash
-cargo test --no-default-features --features rust-backend
-cargo test --no-default-features --features "rust-backend cpp-oracle"
-```
+Please refer to the [API documentation](https://docs.rs/rs_abieos/) for detailed information on every type and method.
 
 ## Architecture & Design Notes
 
 ### Active Backend Router
-The safe Rust public API (`Abieos`, `AbieosContract`, `NameLike`, etc.) is fully decoupled from the underlying engine. It routes calls dynamically to either `backend::cpp` (using FFI bindgen bindings to C++ `abieos`) or `backend::rust` (the pure Rust engine) based on the enabled Cargo features.
+The safe Rust public API (`Abieos`, `AbieosContract`, `NameLike`, `AbiLike`, `AbieosError`) is decoupled from the underlying engine. It routes calls to either `backend::rust` (the default pure-Rust engine) or `backend::cpp` (FFI bindings to C++ `abieos`) based on the enabled Cargo features.
 
 ### C++ Oracle Role
-The `cpp-oracle` feature exposes the original C++ backend side-by-side with the Rust backend. When both `rust-backend` and `cpp-oracle` are active, the safe public API uses the pure Rust engine while the C++ engine remains accessible via `rs_abieos::cpp_oracle`. This enables differential testing where randomized property fuzzing and table-driven parity suites compare outputs, exit codes, and error messages in real-time.
+The `cpp-oracle` feature exposes the original C++ backend side-by-side with the Rust backend. When both `rust-backend` and `cpp-oracle` are active, the safe public API uses the pure Rust engine while the C++ engine remains accessible via `rs_abieos::cpp_oracle`. This enables differential testing where randomized property fuzzing and table-driven parity suites compare outputs, exit codes, and error messages in real time.
 
 ### Result Buffer Ownership and Thread Safety
-To eliminate the UB risk of use-after-overwrite (where successive calls to FFI functions overwrite the same thread-local C buffer), the safe Rust wrapper copies results immediately into owned Rust types (`String`, `Vec<u8>`). This ensures complete memory safety and allows returned data to survive subsequent serialization calls.
+To eliminate the UB risk of use-after-overwrite (where successive calls to FFI functions overwrite the same context result buffer), the safe Rust wrapper copies results into owned Rust types (`String`, `Vec<u8>`) or caller-supplied buffers (`*_into` methods). Both `Abieos` and `AbiHandle` implement `Send` (move between threads freely) and use one instance per worker thread for lock-free parallel decoding.
 
 ### Parity Scope
-The pure Rust backend implements 100% of the C++ `abieos` parsing rules, including complex ABI constructs like:
+The Rust backend also reads Wire Network `sysio::abi/1.*` ABIs, including
+table IDs, secondary indexes, enums, and protobuf descriptor metadata. Wire
+table names are matched exactly by `Abieos::get_type_for_table`,
+`AbieosContract::get_type_for_table`, and `AbiHandle::type_for_table_name`.
+The existing numeric table APIs use legacy EOSIO names and only expose Wire
+tables whose names can be represented exactly in that format. Resolve an
+arbitrary Wire name with `type_for_table_name`, then pass its row type to
+`bin_to_json` when using a standalone handle.
+Enum decoding emits symbolic names for declared values. Unknown wide integer
+values normally use quoted decimal strings; if that string would match a
+symbolic member or an ambiguous suffix, decoding emits a numeric JSON token
+so re-encoding preserves the original value.
+
+The pure Rust backend implements the C++ `abieos` parsing and serialization rules, including:
 - Order-independent base struct resolution
-- Pseudo-types (`optional`, `array`, `extension`, `binary_extension`)
-- Variants and fixed-size arrays
-- Cryptographic keys (K1, R1, WA) and signature parsing/formatting.
+- Pseudo-types (`optional` `?`, `array` `[]`, fixed-size arrays `[N]`, `binary_extension` `$`)
+- Variants and `extended_asset`
+- `action_results` (ABI 1.2)
+- Cryptographic keys (`K1`, `R1`, `WA`, legacy `EOS` and `WIF`) and signature parsing/formatting.
 
 ---
 
 ## Migration Guide
 
-### Transitioning to the Rust Backend
-Currently, `cpp-backend` is the default to maintain legacy stability. To completely opt-out of the C++ toolchain requirements (e.g. on MSVC Windows hosts or minimal Docker containers), configure `rs_abieos` with no default features:
+### Upgrading to v0.7.0 (`rust-backend` Default)
+In `0.7.0`, `rust-backend` is enabled by default:
 
 ```toml
 [dependencies]
-rs_abieos = { version = "0.5.0", default-features = false, features = ["rust-backend"] }
+rs_abieos = "0.7"
+```
+
+If you previously specified `default-features = false, features = ["rust-backend"]`, that configuration continues to work unchanged.
+
+If you specifically need the legacy C++ FFI backend:
+
+```toml
+[dependencies]
+rs_abieos = { version = "0.7", default-features = false, features = ["cpp-backend"] }
 ```
 
 ### Build Requirements Matrix
 
-| Feature | Backend Engine | C++ Compiler Required | Clang/Bindgen Required |
-| :--- | :--- | :--- | :--- |
-| `cpp-backend` (default) | C++ `abieos.h` | Yes | Yes |
-| `rust-backend` | Pure Rust | No | No |
-| `rust-backend` + `cpp-oracle` | Pure Rust + C++ Oracle | Yes | Yes |
+| Feature | Backend Engine | C++ Compiler Required | Clang/Bindgen Required | Windows MSVC Support |
+| :--- | :--- | :--- | :--- | :--- |
+| `rust-backend` (**default**) | Pure Rust | No | No | Yes |
+| `cpp-backend` | C++ `abieos.h` | Yes | Yes | No (`windows-gnu` only) |
+| `rust-backend` + `cpp-oracle` | Pure Rust + C++ Oracle | Yes | Yes | No (`windows-gnu` only) |
 
 If you discover any behavioral divergence between the C++ and Rust backends on valid or invalid inputs, please file an issue with the hex or JSON payload to help us expand the parity fixture coverage.
 
@@ -342,9 +246,14 @@ If you want to add test coverage for a specific type or format:
 ## Release Checklist
 Before tagging and publishing a new release:
 - [ ] Run format check: `cargo fmt --all -- --check`
-- [ ] Run lints on both backends: `cargo clippy --all-targets --all-features -- -D warnings` and `cargo clippy --all-targets --no-default-features --features rust-backend -- -D warnings`
-- [ ] Verify test suite passes on all targets: `cargo test --all-features`
-- [ ] Run property and smoke fuzzing: `ABIEOS_FUZZ_ITERS=50000 cargo test --no-default-features --features rust-backend --test rust_backend_fuzz_property`
+- [ ] Run lints across feature sets:
+  - `cargo clippy --all-targets -- -D warnings`
+  - `cargo clippy --all-targets --no-default-features --features cpp-backend -- -D warnings`
+  - `cargo clippy --all-targets --all-features -- -D warnings`
+- [ ] Verify test suites pass:
+  - `cargo test`
+  - `cargo test --no-default-features --features cpp-backend`
+  - `cargo test --no-default-features --features "rust-backend cpp-oracle"`
+- [ ] Run property and smoke fuzzing: `ABIEOS_FUZZ_ITERS=50000 cargo test --test rust_backend_fuzz_property`
 - [ ] Confirm Criterion benchmarks compile: `cargo bench --no-run`
-- [ ] Check local documentation builds cleanly: `cargo doc --no-deps --all-features`
-
+- [ ] Check documentation builds cleanly with `-D warnings`: `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features`

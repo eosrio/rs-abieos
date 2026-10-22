@@ -244,12 +244,16 @@ mod rust_backend_abi_conversion_port {
     fn rust_backend_ports_minimal_json_abi_setup_and_conversion() {
         let abieos = Abieos::new();
 
-        assert!(abieos
-            .set_abi_json_native(8, r#"{"version":"eosio::abi/1.0"}"#)
-            .expect("minimal abi/1.0 setup should succeed"));
-        assert!(abieos
-            .set_abi_json_native(8, r#"{"version":"eosio::abi/1.1"}"#)
-            .expect("minimal abi/1.1 setup should succeed"));
+        assert!(
+            abieos
+                .set_abi_json_native(8, r#"{"version":"eosio::abi/1.0"}"#)
+                .expect("minimal abi/1.0 setup should succeed")
+        );
+        assert!(
+            abieos
+                .set_abi_json_native(8, r#"{"version":"eosio::abi/1.1"}"#)
+                .expect("minimal abi/1.1 setup should succeed")
+        );
 
         let bin = abieos
             .abi_json_to_bin(r#"{"version":"eosio::abi/1.1"}"#)

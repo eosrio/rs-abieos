@@ -10,7 +10,7 @@ fn safe_api_is_available_with_selected_backend() {
 
 #[cfg(all(feature = "cpp-backend", not(feature = "rust-backend")))]
 #[test]
-fn default_cpp_backend_selects_cpp_for_safe_api() {
+fn cpp_backend_selects_cpp_for_safe_api() {
     let active_context = std::any::type_name::<rs_abieos::abieos_context_s>();
 
     assert!(
@@ -21,7 +21,7 @@ fn default_cpp_backend_selects_cpp_for_safe_api() {
 
 #[cfg(feature = "rust-backend")]
 #[test]
-fn rust_backend_selects_rust_for_safe_api() {
+fn default_rust_backend_selects_rust_for_safe_api() {
     let active_context = std::any::type_name::<rs_abieos::abieos_context_s>();
 
     assert!(

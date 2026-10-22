@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, release-0.7.0]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, release-0.7.0]
   schedule:
     # Daily at 02:00 UTC
     - cron: "0 2 * * *"
@@ -35,31 +35,45 @@ jobs:
       - name: Run rustfmt
         run: cargo fmt --all -- --check
 
+      - name: Run clippy (default / Rust backend)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run clippy (C++ backend)
+        run: cargo clippy --all-targets --no-default-features --features cpp-backend -- -D warnings
+
       - name: Run clippy (all features)
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-      - name: Run clippy (Rust backend)
-        run: cargo clippy --all-targets --no-default-features --features rust-backend -- -D warnings
+      - name: Build docs (default / Rust backend)
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --no-deps
+
+      - name: Build docs (C++ backend)
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --no-deps --no-default-features --features cpp-backend
 
       - name: Build docs (all features)
+        env:
+          RUSTDOCFLAGS: -D warnings
         run: cargo doc --no-deps --all-features
 
-      - name: Build docs (Rust backend)
-        run: cargo doc --no-deps --no-default-features --features rust-backend
+      - name: Build binary (default / Rust backend)
+        run: cargo build --bin rs_abieos
 
-      - name: Build binary (Rust backend)
-        run: cargo build --no-default-features --features rust-backend --bin rs_abieos
+      - name: Build examples (default / Rust backend)
+        run: cargo build --examples
 
-      - name: Build examples (Rust backend)
-        run: cargo build --no-default-features --features rust-backend --examples
-
-      - name: Check benchmarks compile (Rust backend)
-        run: cargo bench --no-default-features --features rust-backend --no-run
+      - name: Check benchmarks compile (default / Rust backend)
+        run: cargo bench --no-run
 
       - name: Check feature-matrix combinations
         run: |
-          # default (cpp-backend)
+          # default (rust-backend)
           cargo check --all-targets
+          # cpp-backend
+          cargo check --all-targets --no-default-features --features cpp-backend
           # cpp-oracle (runs both)
           cargo check --all-targets --no-default-features --features "rust-backend cpp-oracle"
 
@@ -94,11 +108,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-msrv-1.95-cargo-
 
-      - name: Test (C++ backend)
+      - name: Test (default / Rust backend)
         run: cargo test --all-targets
 
-      - name: Test (Rust backend)
-        run: cargo test --all-targets --no-default-features --features rust-backend
+      - name: Test (C++ backend)
+        run: cargo test --all-targets --no-default-features --features cpp-backend
 
       - name: Check Rust backend against C++ oracle
         run: cargo check --all-targets --no-default-features --features "rust-backend cpp-oracle"
@@ -132,10 +146,10 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --no-default-features --features cpp-backend
 
       - name: Run tests
-        run: cargo test
+        run: cargo test --no-default-features --features cpp-backend
 
   test-macos:
     name: Test (C++ backend, macOS)
@@ -161,10 +175,10 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --no-default-features --features cpp-backend
 
       - name: Run tests
-        run: cargo test
+        run: cargo test --no-default-features --features cpp-backend
 
   test-windows:
     name: Test (C++ backend, Windows GNU)
@@ -201,13 +215,13 @@ jobs:
             ${{ runner.os }}-gnu-cargo-
 
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --no-default-features --features cpp-backend
 
       - name: Run tests
-        run: cargo test
+        run: cargo test --no-default-features --features cpp-backend
 
   test-rust-backend:
-    name: Test Rust backend (${{ matrix.os }}${{ matrix.target && format(' - {0}', matrix.target) || '' }})
+    name: Test default Rust backend (${{ matrix.os }}${{ matrix.target && format(' - {0}', matrix.target) || '' }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -239,8 +253,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.target || 'default' }}-rust-backend-cargo-
 
-      - name: Run Rust backend tests
-        run: cargo test --no-default-features --features rust-backend ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+      - name: Run default Rust backend tests
+        run: cargo test ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
   check-targets:
     name: Check additional targets (Rust backend)
@@ -257,7 +271,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - name: Run cargo check
-        run: cargo check --no-default-features --features rust-backend --target ${{ matrix.target }}
+        run: cargo check --target ${{ matrix.target }}
 
   test-cpp-oracle:
     name: Test Rust backend against C++ oracle
@@ -314,17 +328,13 @@ jobs:
       - name: Run property/fuzz smoke (fixed seed)
         env:
           ABIEOS_FUZZ_ITERS: "20000"
-        run: >
-          cargo test --no-default-features --features rust-backend
-          --test rust_backend_fuzz_property
+        run: cargo test --test rust_backend_fuzz_property
 
       - name: Run property/fuzz smoke (run-varying seed)
         env:
           ABIEOS_FUZZ_ITERS: "20000"
           ABIEOS_FUZZ_SEED: ${{ github.run_id }}
-        run: >
-          cargo test --no-default-features --features rust-backend
-          --test rust_backend_fuzz_property
+        run: cargo test --test rust_backend_fuzz_property
 
   coverage:
     name: Coverage

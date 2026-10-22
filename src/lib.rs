@@ -2,13 +2,14 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(clippy::missing_safety_doc)]
-#![allow(clippy::manual_is_multiple_of)]
-#![allow(clippy::manual_repeat_n)]
 #![allow(clippy::only_used_in_recursion)]
 
 //! # Rust Abieos
 //!
-//! Abieos is a Rust wrapper for the abieos C library
+//! `rs_abieos` provides Antelope/EOSIO ABI serialization, deserialization, and name conversion.
+//! By default (`rust-backend`), it uses a pure-Rust implementation with no C/C++ toolchain
+//! dependencies. An optional `cpp-backend` feature compiles and links the original C++ `abieos`
+//! library via FFI.
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -42,11 +43,12 @@ fn cstr_push(ptr: *const c_char, out: &mut String) -> Result<(), AbieosError> {
     Ok(())
 }
 
-/// Abieos is a Rust wrapper for the abieos C library.
+/// Abieos is a Rust wrapper for the abieos C ABI surface (backed by pure Rust by default,
+/// or the C++ library with `cpp-backend`).
 ///
 /// # Thread Safety
 ///
-/// `Abieos` implements `Send` but **not** `Sync`. The underlying C library stores
+/// `Abieos` implements `Send` but **not** `Sync`. The underlying context stores
 /// mutable state (result buffers, error strings) in the context struct, so concurrent
 /// access from multiple threads is **not safe**.
 ///
@@ -135,8 +137,14 @@ impl AbieosContract {
     /// Get data type for a table
     pub fn get_type_for_table(&self, table: &str) -> Result<String, AbieosError> {
         let ref_abieos = Abieos::from_context(self.context);
-        match ref_abieos.string_to_name(table) {
-            Ok(x) => ref_abieos.get_type_for_table_native(self.name, x),
+        ref_abieos.get_type_for_table_name(self.name, table)
+    }
+
+    /// Get data type for an action result
+    pub fn get_type_for_action_result(&self, action_result: &str) -> Result<String, AbieosError> {
+        let ref_abieos = Abieos::from_context(self.context);
+        match ref_abieos.string_to_name(action_result) {
+            Ok(x) => ref_abieos.get_type_for_action_result_native(self.name, x),
             Err(_) => Err(AbieosError::StringToName),
         }
     }
@@ -147,10 +155,22 @@ impl AbieosContract {
         ref_abieos.json_to_hex_native(self.name, datatype, json)
     }
 
+    /// Serialize JSON into binary (output as `Vec<u8>`)
+    pub fn json_to_bin(&self, datatype: &str, json: &str) -> Result<Vec<u8>, AbieosError> {
+        let ref_abieos = Abieos::from_context(self.context);
+        ref_abieos.json_to_bin_native(self.name, datatype, json)
+    }
+
     /// Deserialize HEX string into JSON
     pub fn hex_to_json(&self, datatype: &str, hex: &str) -> Result<String, AbieosError> {
         let ref_abieos = Abieos::from_context(self.context);
         ref_abieos.hex_to_json_native(self.name, datatype, hex)
+    }
+
+    /// Deserialize binary slice into JSON
+    pub fn bin_to_json(&self, datatype: &str, bin: &[u8]) -> Result<String, AbieosError> {
+        let ref_abieos = Abieos::from_context(self.context);
+        ref_abieos.bin_to_json_native(self.name, datatype, bin)
     }
 }
 
@@ -314,7 +334,7 @@ impl Abieos {
     /// [`delete_contract`](Self::delete_contract) first, then `set_abi`.
     ///
     /// For decoding historical data where the active ABI changes over time (per `setabi`),
-    /// prefer [`AbiHandle`](crate::AbiHandle) (rust-backend): parse each version once and keep
+    /// prefer `AbiHandle` (rust-backend): parse each version once and keep
     /// your own `(account, valid_from)` map — no per-version reload or `delete`/`set` churn.
     pub fn set_abi_json(&self, contract: &str, abi_json: &str) -> Result<bool, AbieosError> {
         match self.string_to_name(contract) {
@@ -767,22 +787,32 @@ impl Abieos {
         }
     }
 
-    /// Get the type for a table
+    /// Get the type for a table. Wire (`sysio`) table names are matched exactly.
     pub fn get_type_for_table(&self, contract: &str, table: &str) -> Result<String, AbieosError> {
-        let ctx = self.ctx();
         let contract = self.string_to_name(contract)?;
-        let table = self.string_to_name(table)?;
-        unsafe {
-            let p = abieos_get_type_for_table(ctx, contract, table);
-            if p.is_null() {
-                Err(AbieosError::GetTypeForTable(self.get_error()))
-            } else {
-                Ok(string_from_ptr(p))
-            }
+        self.get_type_for_table_name(contract, table)
+    }
+
+    fn get_type_for_table_name(&self, contract: u64, table: &str) -> Result<String, AbieosError> {
+        // Retain the context API's C-string argument validation.
+        if table.as_bytes().contains(&0) {
+            return Err(AbieosError::StringToName);
+        }
+        #[cfg(feature = "rust-backend")]
+        {
+            unsafe { backend::get_type_for_table_name(self.ctx(), contract, table) }
+                .ok_or_else(|| AbieosError::GetTypeForTable(self.get_error()))
+        }
+        #[cfg(not(feature = "rust-backend"))]
+        {
+            let table = self.string_to_name(table)?;
+            self.get_type_for_table_native(contract, table)
         }
     }
 
-    /// Get the type for a table (u64 names as input)
+    /// Get the type for a table (legacy EOSIO u64 names as input).
+    /// Wire tables whose names cannot be represented exactly are only available
+    /// through [`get_type_for_table`](Self::get_type_for_table).
     pub fn get_type_for_table_native(
         &self,
         contract: u64,

@@ -49,10 +49,10 @@ pub(crate) fn write_key_like(s: &str, w: &mut Writer, kind: KeyKind) -> Result<(
         }
         decoded.remove(0);
     } else {
-        if let Some(expected) = fixed_len {
-            if decoded.len() != expected {
-                return Err("key has invalid size".into());
-            }
+        if let Some(expected) = fixed_len
+            && decoded.len() != expected
+        {
+            return Err("key has invalid size".into());
         }
         let digest = ripemd160_with_suffix(&decoded, suffix.as_bytes());
         if checksum != digest[..4] {

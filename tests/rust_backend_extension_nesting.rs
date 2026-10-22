@@ -1,3 +1,4 @@
+#[cfg(feature = "rust-backend")]
 #[path = "common/extension_nesting_fixtures.rs"]
 mod extension_nesting_fixtures;
 
